@@ -179,11 +179,13 @@ async function cambiarCamara() {
       await restaurar("Este aparato solo tiene una cámara");
       return;
     }
+    let granAngular = false;
+    if (destino === "environment") ({ stream: nuevo, granAngular } = await preferirGranAngular(nuevo));
     await ponerStream(nuevo);
     const real = nuevo.getVideoTracks()[0]?.getSettings().facingMode;
     facing = real || destino;
     espejo = facing !== "environment";
-    ui.toast(espejo ? "Cámara frontal" : "Cámara trasera", 1400);
+    ui.toast(espejo ? "Cámara frontal" : granAngular ? "Cámara trasera · gran angular" : "Cámara trasera", 1600);
   } catch (err) {
     console.error(err);
     try {
@@ -199,6 +201,51 @@ async function cambiarCamara() {
     lastHands = null;
     cambiandoCamara = false;
   }
+}
+
+/**
+ * Con la trasera, cuanto más campo visual mejor: el marco se hace con los
+ * brazos a media distancia y con la lente normal las manos salen cortadas por
+ * los bordes, y sin palma el detector no da puntos. Así que se busca la lente
+ * ultra gran angular (el iPhone la expone como cámara aparte) y, si no la hay,
+ * se baja el zoom al mínimo cuando la cámara lo admite (0,5x en varios
+ * Android). Si nada de eso existe, se queda la que vino.
+ */
+async function preferirGranAngular(stream) {
+  let track = stream.getVideoTracks()[0];
+  const idActual = track?.getSettings().deviceId;
+  try {
+    const ultra = (await navigator.mediaDevices.enumerateDevices()).find(
+      (d) =>
+        d.kind === "videoinput" &&
+        d.deviceId &&
+        d.deviceId !== idActual &&
+        /ultra|gran angular|0[.,]5/i.test(d.label) &&
+        !/front|frontal|delantera/i.test(d.label)
+    );
+    if (ultra) {
+      // iOS solo deja una captura viva: soltar antes de pedir la otra lente.
+      pararStream(stream);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: ultra.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+        return { stream, granAngular: true };
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia(cameraConstraints("environment", true));
+        track = stream.getVideoTracks()[0];
+      }
+    }
+    const caps = track?.getCapabilities?.() || {};
+    if (caps.zoom && caps.zoom.min < 1) {
+      await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+      return { stream, granAngular: true };
+    }
+  } catch (err) {
+    console.warn("Sin gran angular:", err);
+  }
+  return { stream, granAngular: false };
 }
 
 function loop() {

@@ -60,8 +60,14 @@ dedos con latencia cero.
 - **Puño cerrado** (una mano, sostenido medio segundo): cambia a la cámara
   trasera; otro puño vuelve a la frontal. Mientras lo sostienes se dibuja un
   anillo que se va llenando, para que se vea venir. La frontal se muestra en
-  espejo y la trasera tal cual, como una cámara normal. Si el aparato solo
-  tiene una cámara, avisa y no pasa nada. El puño no cuenta mientras el marco
+  espejo y la trasera tal cual, como una cámara normal. Con la trasera la app
+  busca la lente ultra gran angular (0,5x) o baja el zoom al mínimo si la
+  cámara lo permite: con más campo visual las manos caben enteras a una
+  distancia cómoda. Si el aparato solo tiene una cámara, avisa y no pasa nada.
+
+  El detector de manos necesita ver la **palma** para dar puntos: si solo
+  entran los dedos en el cuadro, no hay marco. Por eso importa el campo
+  visual, y por eso la pista de abajo avisa cuando ve una sola mano o ninguna. El puño no cuenta mientras el marco
   está hecho, así una mano medio escondida detrás de la otra no cambia nada.
 
 Los tres parámetros de cada efecto (intensidad, tono, detalle) están fijados
