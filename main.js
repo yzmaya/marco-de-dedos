@@ -90,13 +90,37 @@ async function init() {
   requestAnimationFrame(loop);
 }
 
+/**
+ * Engancha un stream al video y espera a que llegue el PRIMER CUADRO de
+ * verdad, no solo los metadatos. Sin esa espera, en iOS el canvas se
+ * redimensiona a la cámara nueva (y se limpia) antes de que haya nada que
+ * pintar, y la pantalla se queda en negro.
+ */
 async function ponerStream(stream) {
+  video.srcObject = null;
   video.srcObject = stream;
-  await new Promise((resolve) => {
-    if (video.readyState >= 1) resolve();
-    else video.onloadedmetadata = resolve;
+  await esperar((listo) => video.addEventListener("loadedmetadata", listo, { once: true }), () => video.readyState >= 1);
+  try {
+    await video.play();
+  } catch (err) {
+    // play() se interrumpe si llega otro load: no es un error de verdad.
+    if (err?.name !== "AbortError") throw err;
+  }
+  await esperar(() => {}, () => video.readyState >= 2);
+}
+
+/** Espera a que se cumpla `cond`, avisada por `suscribir` o por sondeo, con tope de 4 s. */
+function esperar(suscribir, cond) {
+  return new Promise((resolve) => {
+    if (cond()) return resolve();
+    const t0 = performance.now();
+    const sondeo = () => {
+      if (cond() || performance.now() - t0 > 4000) resolve();
+      else requestAnimationFrame(sondeo);
+    };
+    suscribir(() => resolve());
+    sondeo();
   });
-  await video.play();
 }
 
 function pararStream(stream) {
@@ -104,53 +128,78 @@ function pararStream(stream) {
 }
 
 /**
- * Cambia entre la cámara frontal y la trasera. Primero se pide el lado
- * contrario de forma exacta; si el aparato no lo tiene (un portátil con una
- * sola webcam), se busca cualquier otra cámara distinta a la actual, y si
- * tampoco hay, se avisa y no pasa nada.
+ * Cambia entre la cámara frontal y la trasera.
+ *
+ * El orden importa: iOS solo deja UNA captura de cámara viva a la vez, y si
+ * se pide la nueva con la vieja todavía abierta, Safari entrega un stream
+ * sin cuadros (pantalla negra). Así que primero se suelta la actual y luego
+ * se pide la otra. Se pide el lado contrario de forma exacta; si el aparato
+ * no lo tiene (un portátil con una sola webcam), se busca cualquier otra
+ * cámara distinta, y si tampoco hay, se vuelve a la de antes y se avisa.
  */
 async function cambiarCamara() {
   if (cambiandoCamara || DEMO) return;
   cambiandoCamara = true;
+  const origen = facing;
   const destino = facing === "user" ? "environment" : "user";
   ui.toast(destino === "environment" ? "Cámara trasera…" : "Cámara frontal…", 1400);
   const actual = video.srcObject;
   const idActual = actual?.getVideoTracks?.()[0]?.getSettings().deviceId;
+  pararStream(actual);
+  video.srcObject = null;
+
+  const restaurar = async (motivo) => {
+    ui.toast(motivo, 2400);
+    await ponerStream(await navigator.mediaDevices.getUserMedia(cameraConstraints(origen)));
+  };
+
   try {
-    let nuevo;
+    let nuevo = null;
     try {
       nuevo = await navigator.mediaDevices.getUserMedia(cameraConstraints(destino, true));
     } catch {
       const otras = (await navigator.mediaDevices.enumerateDevices())
         .filter((d) => d.kind === "videoinput" && d.deviceId && d.deviceId !== idActual);
-      if (!otras.length) {
-        ui.toast("Este aparato solo tiene una cámara", 2200);
-        return;
+      if (otras.length) {
+        nuevo = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: otras[0].deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
       }
-      nuevo = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: otras[0].deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
     }
-    pararStream(actual);
+    if (!nuevo) {
+      await restaurar("Este aparato solo tiene una cámara");
+      return;
+    }
     await ponerStream(nuevo);
     const real = nuevo.getVideoTracks()[0]?.getSettings().facingMode;
     facing = real || destino;
     espejo = facing !== "environment";
+    ui.toast(espejo ? "Cámara frontal" : "Cámara trasera", 1400);
+  } catch (err) {
+    console.error(err);
+    try {
+      await restaurar(`No se pudo cambiar de cámara: ${err?.message || err}`);
+    } catch (err2) {
+      console.error(err2);
+      ui.fatal("Se perdió la cámara al cambiar. Recarga la página.");
+    }
+  } finally {
     tracker.reset();
     puno.reset();
     lastVideoTime = -1;
     lastHands = null;
-    ui.toast(espejo ? "Cámara frontal" : "Cámara trasera", 1400);
-  } catch (err) {
-    console.error(err);
-    ui.toast(`No se pudo cambiar de cámara: ${err?.message || err}`, 3000);
-  } finally {
     cambiandoCamara = false;
   }
 }
 
 function loop() {
+  // Mientras la cámara cambia no hay cuadros: se deja el último pintado en
+  // vez de limpiar el canvas (que es lo que lo pone en negro).
+  if (cambiandoCamara || video.readyState < 2) {
+    requestAnimationFrame(loop);
+    return;
+  }
   if (resizeCanvasToVideo(canvas, video)) motor?.resize(canvas.width, canvas.height);
   const w = canvas.width;
   const h = canvas.height;
