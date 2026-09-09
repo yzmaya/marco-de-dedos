@@ -33,6 +33,7 @@ export function createUI({ onEfecto, efectoId }) {
   const el = (id) => document.getElementById(id);
   const toolbar = el("toolbar");
   const hint = el("hint");
+  const hintText = el("hint-text");
   const statusEl = el("status");
   const statusText = el("status-text");
 
@@ -125,6 +126,10 @@ export function createUI({ onEfecto, efectoId }) {
     },
     showHint(show) {
       hint.classList.toggle("hidden", !show);
+    },
+    /** Cambia el texto de la pista solo si es distinto (evita repintar cada cuadro). */
+    setHint(text) {
+      if (hintText.textContent !== text) hintText.textContent = text;
     },
     setLoading(text) {
       statusEl.classList.remove("hidden");

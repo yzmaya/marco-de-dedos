@@ -10,7 +10,15 @@
 // Gestos: el marco de director abre la ventana con el efecto; un puño cerrado
 // y sostenido cambia entre la cámara frontal y la trasera.
 
-import { computeQuad, FrameTracker, FistDetector, centroid, toPixel } from "./tracking.js";
+import {
+  computeQuad,
+  FrameTracker,
+  FistDetector,
+  TRACKING_DEFAULTS,
+  handInfo,
+  centroid,
+  toPixel,
+} from "./tracking.js";
 import {
   drawMirrored,
   clipToQuad,
@@ -244,8 +252,71 @@ function loop() {
     drawPuno(ctx, toPixel(centroid(puno.hand), w, h, espejo), puno.progress, w);
   }
 
-  ui.showHint(tracker.presence <= 0.5);
+  // Sin marco: enseñar qué ve el detector y decir qué falta. Sin esto, cuando
+  // el gesto no entra no hay forma de saber si es que no ve las manos o si es
+  // que la L está poco abierta.
+  const sinMarco = tracker.presence <= 0.5;
+  if (sinMarco && !puno.hand) {
+    const manos = lastHands ?? [];
+    const infos = manos.map((lm) => handInfo(lm, { width: w, height: h, mirror: espejo }));
+    drawManos(ctx, infos, w);
+    ui.setHint(pistaPara(infos));
+  }
+  ui.showHint(sinMarco);
   requestAnimationFrame(loop);
+}
+
+/** Texto de ayuda según cuántas manos se ven y cómo están. */
+function pistaPara(infos) {
+  if (DEMO) return "Modo demo: las manos son falsas y se mueven solas.";
+  if (infos.length === 0) {
+    return "No veo tus manos. Mételas enteras en el cuadro, con las palmas a la vista.";
+  }
+  if (infos.length === 1) {
+    return "Veo una mano. Mete la otra entera en el cuadro, no la dejes cortada por el borde.";
+  }
+  const cerradas = infos.filter((i) => i.spread < TRACKING_DEFAULTS.spreadEnter).length;
+  if (cerradas) {
+    return cerradas === 2
+      ? "Veo las dos manos. Abre bien el pulgar y el índice en L, hasta que los puntos se pongan verdes."
+      : "Casi: abre más el pulgar y el índice de la mano con los puntos rojos.";
+  }
+  return "Ya está: junta las dos L en un rectángulo, un poco más grande.";
+}
+
+/**
+ * Puntas de pulgar e índice de cada mano, unidas por una línea: verde si la
+ * apertura basta para el marco, roja si no. Es la única forma de ver, en el
+ * teléfono, por qué el marco no entra.
+ */
+function drawManos(ctx, infos, w) {
+  if (!infos.length) return;
+  const r = Math.max(5, w * 0.007);
+  ctx.save();
+  ctx.lineWidth = Math.max(2, w / 500);
+  for (const i of infos) {
+    const ok = i.spread >= TRACKING_DEFAULTS.spreadEnter;
+    const color = ok ? "#4ade80" : "#ff6b5e";
+    ctx.strokeStyle = withAlpha(color, 0.7);
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(i.thumb.x, i.thumb.y);
+    ctx.lineTo(i.index.x, i.index.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const p of [i.thumb, i.index]) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 /** Pinta el efecto y lo revela solo a través del cuadrilátero. */

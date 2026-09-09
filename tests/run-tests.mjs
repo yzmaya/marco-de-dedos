@@ -21,6 +21,7 @@ import {
   INDEX_TIP,
   THUMB_TIP,
   WRIST,
+  handInfo,
   isFist,
   fistHand,
   FistDetector,
@@ -59,6 +60,17 @@ function test(name, fn) {
 }
 function group(name) {
   console.log(`\n${name}`);
+}
+
+/** Acerca el pulgar al índice de las dos manos por un factor 0..1. */
+function pinch(hands, factor) {
+  return hands.map((lm) => {
+    const copy = lm.map((p) => ({ ...p }));
+    const i = copy[INDEX_TIP];
+    const t = copy[THUMB_TIP];
+    copy[THUMB_TIP] = { x: i.x + (t.x - i.x) * factor, y: i.y + (t.y - i.y) * factor, z: 0 };
+    return copy;
+  });
 }
 
 // ---------------------------------------------------------------- geometría
@@ -114,6 +126,16 @@ test("el espejo invierte la x y respeta la y", () => {
   assert.equal(toPixel({ x: 0.25, y: 0.5 }, W, H, false).x, 0.25 * W);
 });
 
+test("handInfo mide la apertura en tamaños de mano y el marco de demo pasa el gate", () => {
+  for (const lm of makeFakeHands(0)) {
+    const i = handInfo(lm, { width: W, height: H });
+    assert.ok(i.spread > TRACKING_DEFAULTS.spreadEnter, `apertura ${i.spread.toFixed(2)}`);
+    assert.ok(i.scale > 1);
+  }
+  const cerrada = pinch(makeFakeHands(0), 0.05)[0];
+  assert.ok(handInfo(cerrada, { width: W, height: H }).spread < TRACKING_DEFAULTS.spreadExit);
+});
+
 test("computeQuad exige exactamente dos manos", () => {
   const hands = makeFakeHands(0);
   assert.equal(computeQuad(null, { width: W, height: H }), null);
@@ -154,15 +176,6 @@ test("quadScale es el lado corto del marco", () => {
 // ---------------------------------------------------------------- histéresis
 group("Histéresis de los gates");
 
-function pinch(hands, factor) {
-  return hands.map((lm) => {
-    const copy = lm.map((p) => ({ ...p }));
-    const i = copy[INDEX_TIP];
-    const t = copy[THUMB_TIP];
-    copy[THUMB_TIP] = { x: i.x + (t.x - i.x) * factor, y: i.y + (t.y - i.y) * factor, z: 0 };
-    return copy;
-  });
-}
 
 test("cuesta más entrar que salir: hay una zona que solo pasa estando activo", () => {
   const partly = pinch(makeFakeHands(0), 0.15);

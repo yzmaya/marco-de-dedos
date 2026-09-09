@@ -22,9 +22,10 @@ export const PINKY_TIP = 20;
 
 export const TRACKING_DEFAULTS = {
   // Histéresis de separación pulgar-índice, en múltiplos del tamaño de la
-  // mano. Cuesta entrar (0.75) y cuesta salir (0.2), así que girar o
-  // escorzar los dedos no apaga el efecto.
-  spreadEnter: 0.75,
+  // mano. Cuesta entrar (0.6) y cuesta salir (0.2), así que girar o
+  // escorzar los dedos no apaga el efecto. Era 0.75, pero con la mano de
+  // perfil o vista por el dorso (cámara trasera) la L se acorta y no entraba.
+  spreadEnter: 0.6,
   spreadExit: 0.2,
   // Histéresis de área mínima del cuadrilátero, como fracción del canvas.
   areaEnter: 0.005,
@@ -94,6 +95,23 @@ export function toPixel(lm, width, height, mirror = true) {
 }
 
 /**
+ * Lo que el marco necesita de una mano, en píxeles: punta del índice, punta
+ * del pulgar, x de la muñeca y la apertura pulgar-índice en múltiplos del
+ * tamaño de la mano. Lo usa computeQuad y también el dibujo de ayuda que
+ * enseña si la L está lo bastante abierta.
+ */
+export function handInfo(lm, { width, height, mirror = true }) {
+  const wrist = toPixel(lm[WRIST], width, height, mirror);
+  const index = toPixel(lm[INDEX_TIP], width, height, mirror);
+  const thumb = toPixel(lm[THUMB_TIP], width, height, mirror);
+  // Tamaño de la mano medido de muñeca a nudillo medio: estable apunten
+  // donde apunten los dedos, a diferencia de medir sobre los dedos, que
+  // se acortan por escorzo al girar la mano.
+  const scale = dist(wrist, toPixel(lm[MIDDLE_MCP], width, height, mirror)) + 1;
+  return { index, thumb, wristX: wrist.x, scale, spread: dist(thumb, index) / scale };
+}
+
+/**
  * Dadas exactamente dos manos, devuelve las 4 esquinas del marco en ORDEN
  * ANATÓMICO: [índice izq, índice der, pulgar der, pulgar izq] ("izq" y "der"
  * según la posición en pantalla de la muñeca).
@@ -114,23 +132,12 @@ export function computeQuad(hands, {
 } = {}) {
   if (!hands || hands.length !== 2) return null;
 
-  const info = hands.map((lm) => {
-    const wrist = toPixel(lm[WRIST], width, height, mirror);
-    return {
-      index: toPixel(lm[INDEX_TIP], width, height, mirror),
-      thumb: toPixel(lm[THUMB_TIP], width, height, mirror),
-      wristX: wrist.x,
-      // Tamaño de la mano medido de muñeca a nudillo medio: estable apunten
-      // donde apunten los dedos, a diferencia de medir sobre los dedos, que
-      // se acortan por escorzo al girar la mano.
-      scale: dist(wrist, toPixel(lm[MIDDLE_MCP], width, height, mirror)) + 1,
-    };
-  });
+  const info = hands.map((lm) => handInfo(lm, { width, height, mirror }));
 
   // Gate de separación con histéresis: pulgar e índice bien abiertos en "L".
   const needed = active ? opts.spreadExit : opts.spreadEnter;
   for (const hand of info) {
-    if (dist(hand.thumb, hand.index) < hand.scale * needed) return null;
+    if (hand.spread < needed) return null;
   }
 
   info.sort((a, b) => a.wristX - b.wristX);
