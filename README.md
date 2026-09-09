@@ -39,6 +39,8 @@ que la primera vez hace falta conexión.
 | 3 | Matriz LED | Rejilla de LEDs verdes que enciende según la luz |
 | 4 | Glitch | Franjas rotas, aberración cromática y barrido cian |
 | 5 | Cubos 3D | Cubos sombreados flotando por delante de la ventana |
+| R | Ilustrado | Colores planos, luz en escalones y tinta en los bordes |
+| T | Muñeco 3D | Piel lisa, brillo plástico, luz de borde y color de render |
 | 6 | Contorno neón | Bordes detectados (Sobel) en neón rosa y cian |
 | 7 | Semitono | Trama de puntos de imprenta |
 | 8 | Pixel art | Píxeles gordos y paleta reducida |
@@ -51,6 +53,11 @@ que la primera vez hace falta conexión.
 Todos los efectos son shaders WebGL2 que se aplican al cuadro completo de la
 cámara; el recorte al marco es local y va aparte, así que el efecto sigue los
 dedos con latencia cero.
+
+Ilustrado y Muñeco 3D son lo más lejos que llega un shader: aplanan, entintan
+e iluminan, pero la persona conserva su geometría. Redibujar la cara como un
+personaje (ojos grandes, proporciones de dibujo) solo lo hace un modelo
+generativo; ver «Ir más allá» abajo.
 
 ### Gestos
 
@@ -77,7 +84,7 @@ en `efectos.js`, en el campo `ajustes` de cada uno.
 
 | Tecla | Acción |
 |---|---|
-| 1–9, 0, Q, W, E | Elegir efecto |
+| 1–9, 0, Q, W, E, R, T | Elegir efecto |
 | [ ] o flechas | Efecto anterior / siguiente |
 | O | Ocultar o mostrar la interfaz (deja solo el video y el marco) |
 
@@ -125,6 +132,24 @@ seguidos, con un tiempo de espera entre cambios y la obligación de abrir la
 mano antes de volver a disparar.
 
 Si el navegador no tiene WebGL2, los efectos caen a un filtro CSS aproximado.
+
+## Ir más allá: estilos con IA sin depender de un servicio
+
+Si se quiere el resultado de un modelo generativo (anime que redibuja la cara,
+personaje 3D), hay tres rutas que no pasan por fal:
+
+1. **Modelo en el propio navegador** (gratis, sin servidor). AnimeGAN v2/v3
+   en formato ONNX con ONNX Runtime Web sobre WebGPU da un anime que respeta la
+   cara, a 10–20 fps en un Mac o PC con GPU decente y 2–5 fps en un teléfono.
+   Licencia de uso no comercial: revisar antes de publicar.
+2. **Malla facial + shader** (gratis, tiempo real, también en móvil). MediaPipe
+   Face Landmarker da 478 puntos de la cara; con ellos se deforman los ojos
+   (más grandes), la mandíbula y la nariz sobre el propio video, y encima va
+   el shader Muñeco 3D. Da sensación de personaje sin IA generativa.
+3. **Difusión en tu propia GPU** (el resultado de la referencia). StreamDiffusion
+   o SD-Turbo en un PC con una RTX 3080 o mejor, sirviendo por WebRTC a esta
+   página. Es lo que hacía fal, pero en tu máquina: sin costo por minuto, con
+   el costo del hardware y de mantenerlo encendido.
 
 ## Añadir un efecto
 

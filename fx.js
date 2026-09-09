@@ -8,6 +8,10 @@
 // Para los efectos con `feedback`, al terminar de pintar se copia el resultado
 // a una textura que el cuadro siguiente recibe como u_prev. Así la estela de
 // luz recuerda lo que pintó antes sin necesitar framebuffers de ida y vuelta.
+//
+// Los efectos con `pre` tienen dos pasadas: `pre` pinta a una textura
+// (u_pre) y `glsl` la lee. Sirve para suavizar una vez y sacar bordes o
+// relieve de la versión lisa, que en una sola pasada costaría diez veces más.
 
 import { PRELUDIO_GLSL } from "./efectos.js";
 
@@ -61,6 +65,8 @@ export class MotorFX {
 
     this.videoTex = textura(gl);
     this.prevTex = textura(gl);
+    this.preTex = textura(gl);
+    this.fbo = gl.createFramebuffer();
     this.programas = new Map();
     this.ultimoEfecto = null;
     this.canvas.width = 0;
@@ -74,6 +80,11 @@ export class MotorFX {
     const gl = this.gl;
     gl.viewport(0, 0, width, height);
     this.limpiarMemoria();
+    gl.bindTexture(gl.TEXTURE_2D, this.preTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.preTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   /** Vacía la textura del cuadro anterior (la estela empieza de cero). */
@@ -88,11 +99,12 @@ export class MotorFX {
     );
   }
 
-  programa(efecto) {
-    let p = this.programas.get(efecto.id);
+  programa(efecto, pasada = "glsl") {
+    const clave = `${efecto.id}:${pasada}`;
+    let p = this.programas.get(clave);
     if (p) return p;
     const gl = this.gl;
-    const frag = compilar(gl, gl.FRAGMENT_SHADER, PRELUDIO_GLSL + efecto.glsl);
+    const frag = compilar(gl, gl.FRAGMENT_SHADER, PRELUDIO_GLSL + efecto[pasada]);
     const prog = gl.createProgram();
     gl.attachShader(prog, this.vertex);
     gl.attachShader(prog, frag);
@@ -112,9 +124,39 @@ export class MotorFX {
       u_detalle: u("u_detalle"),
       u_centro: u("u_centro"),
       u_espejo: u("u_espejo"),
+      u_pre: u("u_pre"),
     };
-    this.programas.set(efecto.id, p);
+    this.programas.set(clave, p);
     return p;
+  }
+
+  /** Sube uniforms y texturas comunes a un programa y dibuja el triángulo. */
+  pintar(p, fuente, { w, h, time, intensidad, tono, detalle, centro, espejo }) {
+    const gl = this.gl;
+    gl.useProgram(p.prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+    if (fuente) {
+      // Con FLIP_Y el (0,0) de la textura es la esquina inferior de la imagen,
+      // igual que gl_FragCoord: el shader lee la cámara derecha sin más cuentas.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fuente);
+    }
+    gl.uniform1i(p.u_video, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.prevTex);
+    gl.uniform1i(p.u_prev, 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.preTex);
+    gl.uniform1i(p.u_pre, 2);
+    gl.uniform2f(p.u_res, w, h);
+    gl.uniform1f(p.u_time, time);
+    gl.uniform1f(p.u_intensidad, intensidad);
+    gl.uniform1f(p.u_tono, tono);
+    gl.uniform1f(p.u_detalle, detalle);
+    gl.uniform2f(p.u_centro, centro[0], centro[1]);
+    gl.uniform1f(p.u_espejo, espejo ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   /**
@@ -126,40 +168,29 @@ export class MotorFX {
     time = 0, intensidad = 0.5, tono = 0, detalle = 0.5, centro = [0.5, 0.5], espejo = true,
   } = {}) {
     const gl = this.gl;
-    const p = this.programa(efecto);
     const w = this.canvas.width;
     const h = this.canvas.height;
+    const args = { w, h, time, intensidad, tono, detalle, centro, espejo };
 
     if (efecto !== this.ultimoEfecto) {
       this.limpiarMemoria();
       this.ultimoEfecto = efecto;
     }
 
-    gl.useProgram(p.prog);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
-    // Con FLIP_Y el (0,0) de la textura es la esquina inferior de la imagen,
-    // igual que gl_FragCoord: el shader lee la cámara derecha sin más cuentas.
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fuente);
-    gl.uniform1i(p.u_video, 0);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.prevTex);
-    gl.uniform1i(p.u_prev, 1);
-
-    gl.uniform2f(p.u_res, w, h);
-    gl.uniform1f(p.u_time, time);
-    gl.uniform1f(p.u_intensidad, intensidad);
-    gl.uniform1f(p.u_tono, tono);
-    gl.uniform1f(p.u_detalle, detalle);
-    gl.uniform2f(p.u_centro, centro[0], centro[1]);
-    gl.uniform1f(p.u_espejo, espejo ? 1 : 0);
-
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (efecto.pre) {
+      // Pasada previa a textura. La cámara se sube aquí y la pasada final la
+      // reutiliza sin volver a subirla.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      this.pintar(this.programa(efecto, "pre"), fuente, args);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this.pintar(this.programa(efecto), null, args);
+    } else {
+      this.pintar(this.programa(efecto), fuente, args);
+    }
 
     if (efecto.feedback) {
-      // prevTex sigue enlazada en la unidad 1: se copia el framebuffer encima.
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.prevTex);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
     }
     return this.canvas;

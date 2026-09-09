@@ -488,13 +488,25 @@ test("cada efecto trae shader con main, acento y respaldo CSS", () => {
 
 test("el preludio es GLSL ES 3.00 y declara todo lo que usan los shaders", () => {
   assert.ok(PRELUDIO_GLSL.startsWith("#version 300 es\n"));
-  for (const u of ["u_video", "u_prev", "u_res", "u_time", "u_intensidad", "u_tono", "u_detalle", "u_centro", "u_espejo"]) {
+  for (const u of ["u_video", "u_prev", "u_pre", "u_res", "u_time", "u_intensidad", "u_tono", "u_detalle", "u_centro", "u_espejo"]) {
     assert.ok(PRELUDIO_GLSL.includes(`uniform`) && PRELUDIO_GLSL.includes(u), `falta ${u}`);
   }
   for (const e of EFECTOS) {
     // Ningún shader redeclara lo que ya trae el preludio.
     assert.ok(!/uniform\s/.test(e.glsl), `${e.id} redeclara uniforms`);
     assert.ok(!/#version/.test(e.glsl), `${e.id} redeclara la versión`);
+  }
+});
+
+test("solo los efectos con pasada previa leen u_pre, y la pasada previa es un shader completo", () => {
+  for (const e of EFECTOS) {
+    const lee = /u_pre\b|sobelPre|lumaPre/.test(e.glsl);
+    assert.equal(!!e.pre, lee, `${e.id}: pre=${!!e.pre} pero ${lee ? "lee" : "no lee"} u_pre`);
+    if (e.pre) {
+      assert.ok(/void\s+main\s*\(/.test(e.pre), `${e.id}.pre sin main()`);
+      assert.ok(/fragColor\s*=/.test(e.pre), `${e.id}.pre no escribe fragColor`);
+      assert.ok(!/uniform\s|#version/.test(e.pre), `${e.id}.pre redeclara cosas del preludio`);
+    }
   }
 });
 

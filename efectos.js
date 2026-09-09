@@ -9,6 +9,7 @@
 //   acento                  color del contorno del marco con ese efecto
 //   glsl                    cuerpo del fragment shader (va detrás del PRELUDIO)
 //   feedback                true si lee su propio cuadro anterior (u_prev)
+//   pre                     shader de una pasada previa a textura (u_pre)
 //   overlay(ctx, info)      dibujo 2D encima, dentro del recorte (opcional)
 //   overlayLibre(ctx, info) dibujo 2D encima, sin recortar (opcional)
 //   ajustes                 valor inicial de las tres barritas, de 0 a 1
@@ -43,6 +44,7 @@ uniform float u_tono;
 uniform float u_detalle;
 uniform vec2 u_centro;
 uniform float u_espejo;
+uniform sampler2D u_pre;
 out vec4 fragColor;
 
 // La cámara frontal se ve en espejo (u_espejo = 1), la trasera tal cual.
@@ -51,6 +53,69 @@ float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float ruido(vec2 p) {
   return hash(p + vec2(mod(u_time, 97.0) * 61.0, mod(u_time, 89.0) * 37.0));
+}
+// Suavizado de Kuwahara: de los cuatro cuadrantes alrededor del píxel se
+// queda con la media del que menos varía. Aplana las zonas lisas (piel, ropa)
+// sin difuminar los bordes, que es justo lo que hace que una foto parezca
+// pintada. Cuesta 4·(radio+1)² lecturas por píxel: el radio se limita a 5.
+vec3 kuwahara(vec2 uv, float radio) {
+  vec2 px = 1.0 / u_res;
+  int r = int(clamp(radio, 1.0, 5.0));
+  vec3 mejor = vec3(0.0);
+  float varMin = 1e9;
+  for (int q = 0; q < 4; q++) {
+    vec2 sgn = vec2((q == 1 || q == 3) ? -1.0 : 1.0, (q >= 2) ? -1.0 : 1.0);
+    vec3 m = vec3(0.0);
+    vec3 s2 = vec3(0.0);
+    float n = 0.0;
+    for (int j = 0; j <= 5; j++) {
+      if (j > r) break;
+      for (int i = 0; i <= 5; i++) {
+        if (i > r) break;
+        vec3 c = cam(uv + px * sgn * vec2(float(i), float(j)));
+        m += c;
+        s2 += c * c;
+        n += 1.0;
+      }
+    }
+    m /= n;
+    vec3 v = abs(s2 / n - m * m);
+    float var = v.r + v.g + v.b;
+    if (var < varMin) {
+      varMin = var;
+      mejor = m;
+    }
+  }
+  return mejor;
+}
+// Gradiente de luminancia (Sobel) a escala k píxeles: (gx, gy).
+vec2 sobel(vec2 uv, float k) {
+  vec2 px = k / u_res;
+  float tl = luma(cam(uv + px * vec2(-1.0,  1.0)));
+  float tc = luma(cam(uv + px * vec2( 0.0,  1.0)));
+  float tr = luma(cam(uv + px * vec2( 1.0,  1.0)));
+  float ml = luma(cam(uv + px * vec2(-1.0,  0.0)));
+  float mr = luma(cam(uv + px * vec2( 1.0,  0.0)));
+  float bl = luma(cam(uv + px * vec2(-1.0, -1.0)));
+  float bc = luma(cam(uv + px * vec2( 0.0, -1.0)));
+  float br = luma(cam(uv + px * vec2( 1.0, -1.0)));
+  return vec2(-tl - 2.0 * ml - bl + tr + 2.0 * mr + br,
+              -tl - 2.0 * tc - tr + bl + 2.0 * bc + br);
+}
+// Lo mismo sobre la pasada previa (u_pre), que ya viene en la orientación de salida.
+float lumaPre(vec2 uv) { return luma(texture(u_pre, uv).rgb); }
+vec2 sobelPre(vec2 uv, float k) {
+  vec2 px = k / u_res;
+  float tl = lumaPre(uv + px * vec2(-1.0,  1.0));
+  float tc = lumaPre(uv + px * vec2( 0.0,  1.0));
+  float tr = lumaPre(uv + px * vec2( 1.0,  1.0));
+  float ml = lumaPre(uv + px * vec2(-1.0,  0.0));
+  float mr = lumaPre(uv + px * vec2( 1.0,  0.0));
+  float bl = lumaPre(uv + px * vec2(-1.0, -1.0));
+  float bc = lumaPre(uv + px * vec2( 0.0, -1.0));
+  float br = lumaPre(uv + px * vec2( 1.0, -1.0));
+  return vec2(-tl - 2.0 * ml - bl + tr + 2.0 * mr + br,
+              -tl - 2.0 * tc - tr + bl + 2.0 * bc + br);
 }
 // Gira el tono alrededor del eje gris (rotación de Rodrigues sobre RGB).
 vec3 tono(vec3 c, float h) {
@@ -268,6 +333,93 @@ void main() {
         tono: ajustes.tono,
       });
     },
+  },
+  {
+    // Lo más cerca de un dibujo que se puede llegar sin IA: zonas planas,
+    // luz en escalones, tinta en los bordes y papel. La persona sigue siendo
+    // la persona, solo que entintada.
+    id: "ilustrado",
+    label: "Ilustrado",
+    tecla: "r",
+    acento: "#f4a261",
+    ajustes: { intensidad: 0.55, tono: 0, detalle: 0.4 },
+    etiquetas: { intensidad: "Tinta y escalones", tono: "Tinte", detalle: "Pincelada" },
+    filtro: "saturate(1.4) contrast(1.35)",
+    // Pasada 1: suavizar. Sobre la versión lisa la tinta sale en los bordes
+    // de verdad (mandíbula, gafas, cuello) y no en cada poro de la piel.
+    pre: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  fragColor = vec4(kuwahara(uv, floor(mix(2.0, 5.0, u_detalle))), 1.0);
+}`,
+    glsl: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec3 base = texture(u_pre, uv).rgb;
+  // Luz en escalones, tono intacto: sombra, medio y luz, como un cel. Se
+  // mezcla con la luz continua para que no salgan bandas duras en la cara.
+  float l = luma(base);
+  float niveles = floor(mix(6.0, 3.0, u_intensidad));
+  float lq = (floor(l * niveles) + 0.5) / niveles;
+  vec3 plano = base * (mix(l, lq, 0.65) / max(l, 0.02));
+  plano = mix(vec3(luma(plano)), plano, 1.25);
+  // Tinta: bordes de la imagen suavizada, más gruesa con más pincelada.
+  vec2 g = sobelPre(uv, mix(1.0, 2.0, u_detalle));
+  float tinta = smoothstep(0.28, 0.7, length(g) * mix(0.9, 1.6, u_intensidad));
+  vec3 col = mix(plano, vec3(0.1, 0.08, 0.07), tinta);
+  // Las luces altas se van a blanco de papel.
+  col = mix(col, vec3(0.98, 0.97, 0.94), smoothstep(0.86, 1.0, l) * 0.5 * (1.0 - tinta));
+  // Papel cálido con grano finísimo.
+  col = col * vec3(1.02, 1.0, 0.96) + (ruido(gl_FragCoord.xy) - 0.5) * 0.02;
+  fragColor = vec4(tono(col, u_tono), 1.0);
+}`,
+  },
+  {
+    // Aspecto de render 3D sin cambiar la geometría: piel lisa, brillo
+    // plástico, luz de borde, sombra de contacto y color de película. No
+    // agranda los ojos ni redondea la cara (eso solo lo hace una IA
+    // generativa), pero da la sensación de figura renderizada.
+    id: "muneco",
+    label: "Muñeco 3D",
+    tecla: "t",
+    acento: "#ffb4a2",
+    ajustes: { intensidad: 0.6, tono: 0, detalle: 0.4 },
+    etiquetas: { intensidad: "Plástico", tono: "Tinte", detalle: "Suavizado" },
+    filtro: "saturate(1.5) contrast(1.2) brightness(1.05)",
+    // Pasada 1: suavizar. El relieve se saca de la versión lisa para que la
+    // piel quede como plástico y no como papel arrugado.
+    pre: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  fragColor = vec4(kuwahara(uv, floor(mix(2.0, 4.0, u_detalle))), 1.0);
+}`,
+    glsl: `
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec3 base = texture(u_pre, uv).rgb;
+  vec3 col = mix(cam(uv), base, mix(0.6, 0.95, u_intensidad));
+  // Relieve falso: la luminancia suavizada hace de mapa de alturas.
+  vec2 g = sobelPre(uv, 2.5);
+  vec3 n = normalize(vec3(-g.x * 1.6, -g.y * 1.6, 1.0));
+  vec3 L = normalize(vec3(-0.4, 0.6, 0.7));
+  vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+  float difusa = max(dot(n, L), 0.0);
+  float brillo = pow(max(dot(n, H), 0.0), 60.0);
+  float borde = pow(1.0 - max(n.z, 0.0), 2.0);
+  col = col * (0.88 + 0.22 * difusa)
+      + vec3(1.0, 0.97, 0.9) * brillo * 0.4 * u_intensidad
+      + vec3(0.6, 0.8, 1.0) * borde * 0.2;
+  // Sombra de contacto en los bordes fuertes, como oclusión ambiental.
+  col *= 1.0 - smoothstep(0.2, 0.7, length(g)) * 0.3;
+  // Color de render: algo más saturado, curva en S suave y un punto cálido.
+  col = mix(vec3(luma(col)), col, 1.25);
+  col = clamp(col, 0.0, 1.0);
+  col = mix(col, col * col * (3.0 - 2.0 * col), 0.6);
+  col *= vec3(1.03, 1.0, 0.97);
+  float v = 1.0 - smoothstep(0.55, 1.2, distance(uv, vec2(0.5)) * 1.4);
+  col *= mix(0.88, 1.0, v);
+  fragColor = vec4(tono(col, u_tono), 1.0);
+}`,
   },
   {
     id: "neon",
