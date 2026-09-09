@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marco de dedos · Efectos en vivo</title>
+  <meta name="description" content="Haz el marco de director con los dedos y el área dentro de tus manos se transforma con efectos visuales en tiempo real, todo en tu navegador." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+  <style>
+    :root {
+      --acento: #7df3ff;
+      --bg: #0a0a0c;
+      --panel: rgba(22, 22, 26, 0.88);
+      --line: rgba(255, 255, 255, 0.12);
+      --text: #f2f2f4;
+      --muted: rgba(255, 255, 255, 0.62);
+      --riel: 210px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    button, input { font-family: inherit; }
+
+    /* El video vive en el centro y los controles en columnas a los lados, así
+       la cámara queda despejada. */
+    #stage {
+      position: fixed;
+      inset: 0;
+      padding: 14px var(--riel);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(1100px 620px at 50% 12%, color-mix(in srgb, var(--acento) 12%, transparent), transparent 70%),
+        var(--bg);
+      transition: background 0.4s;
+    }
+    canvas { max-width: 100%; max-height: 100%; border-radius: 14px; }
+    video { display: none; }
+
+    /* ---- pantalla de carga ---- */
+    #status {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: var(--bg);
+      transition: opacity 0.4s;
+    }
+    #status.hidden { opacity: 0; pointer-events: none; }
+    #status-text { font-size: 15px; color: var(--muted); max-width: 34ch; line-height: 1.5; }
+    .spinner {
+      width: 30px; height: 30px;
+      border: 3px solid rgba(255, 255, 255, 0.14);
+      border-top-color: var(--acento);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- pista inferior ---- */
+    #hint {
+      position: fixed;
+      left: 0; right: 0;
+      bottom: 40px;
+      z-index: 5;
+      text-align: center;
+      padding: 0 16px;
+      pointer-events: none;
+      transition: opacity 0.4s;
+      animation: float 3.2s ease-in-out infinite;
+    }
+    #hint.hidden { opacity: 0; }
+    #hint-text {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.9);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+    /* ---- rieles laterales ---- */
+    .riel {
+      position: fixed;
+      top: 0; bottom: 0;
+      width: var(--riel);
+      z-index: 7;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      padding: 14px;
+      overflow-y: auto;
+      transition: opacity 0.25s;
+    }
+    #toolbar { left: 0; }
+
+    .riel .titulo {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 4px 4px;
+    }
+
+    /* ---- selector de efectos ---- */
+    #toolbar button {
+      appearance: none;
+      border: 1px solid transparent;
+      background: rgba(20, 20, 24, 0.72);
+      backdrop-filter: blur(12px);
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 12.5px; font-weight: 600;
+      text-align: left;
+      padding: 8px 10px; border-radius: 11px; cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #toolbar button:hover { background: rgba(255, 255, 255, 0.08); }
+    #toolbar button.active {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--acento);
+      color: #fff;
+    }
+    #toolbar button .key {
+      opacity: 0.5; font-weight: 500; font-size: 10.5px;
+      width: 14px; text-align: center; flex: none;
+    }
+    #toolbar button .punto {
+      width: 8px; height: 8px; border-radius: 50%; flex: none;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* ---- interfaz oculta: solo el video y el marco ---- */
+    body.limpio .riel,
+    body.limpio #hint {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    body.limpio { cursor: none; }
+
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 40px;
+      transform: translateX(-50%);
+      z-index: 12;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: rgba(20, 20, 24, 0.86);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      max-width: calc(100vw - 32px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s;
+    }
+    #toast.show { opacity: 1; }
+
+    /* Por debajo de esto no hay ancho para la columna de efectos: el video
+       llena la pantalla entera (recortando por los lados lo que no quepa, sin
+       franjas negras) y los efectos pasan a ser una tira abajo, con scroll. */
+    @media (max-width: 1040px) {
+      :root { --riel: 0px; }
+      #stage { padding: 0; }
+      canvas {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        object-fit: cover;
+        border-radius: 0;
+      }
+      .riel {
+        top: auto; bottom: 0; width: 100%;
+        flex-direction: row; flex-wrap: nowrap;
+        justify-content: flex-start; align-items: center;
+        gap: 6px;
+        padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+        overflow-x: auto; overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent);
+      }
+      .riel::-webkit-scrollbar { display: none; }
+      .riel .titulo { display: none; }
+      #toolbar button { padding: 8px 11px; font-size: 12px; flex: none; }
+      #toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+      #hint { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <div class="spinner"></div>
+    <div id="status-text">Iniciando…</div>
+  </div>
+
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="hint">
+    <div id="hint-text">Haz el marco de director: pulgar e índice abiertos en L con las dos manos. Puño cerrado: cambia de cámara.</div>
+  </div>
+
+  <!-- Riel izquierdo: los efectos -->
+  <div id="toolbar" class="riel">
+    <div class="titulo">Efectos</div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Cada archivo se cachea por separado, así que el navegador puede servir un
+       index.html nuevo con un módulo viejo. El mapa de importaciones le pone
+       versión a todos de golpe: basta con subir este número al publicar. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "./main.js": "./main.js?v=2",
+      "./efectos.js": "./efectos.js?v=2",
+      "./fx.js": "./fx.js?v=2",
+      "./cubos.js": "./cubos.js?v=2",
+      "./tracking.js": "./tracking.js?v=2",
+      "./composite.js": "./composite.js?v=2",
+      "./hands.js": "./hands.js?v=2",
+      "./demo.js": "./demo.js?v=2",
+      "./ui.js": "./ui.js?v=2"
+    }
+  }
+  </script>
+  <script type="module" src="./main.js?v=2"></script>
+</body>
+</html>

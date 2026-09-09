@@ -1,0 +1,160 @@
+# Marco de dedos · Efectos en vivo
+
+Haz el gesto de marco de director con las dos manos frente a la cámara y el
+área que queda dentro de tus dedos se transforma con un efecto visual en
+tiempo real. Las manos y el fondo son reales; solo lo que se ve dentro del
+marco cambia. Cierra el puño y la app cambia entre la cámara frontal y la
+trasera.
+
+**En vivo:** <https://yzmaya.github.io/marco-de-dedos/>
+**Modo demo, sin cámara:** <https://yzmaya.github.io/marco-de-dedos/?demo>
+
+Todo corre en el navegador desde una página estática: sin build, sin backend,
+sin frameworks, sin claves y sin llamadas a ningún servicio. La cámara nunca
+sale de la pestaña.
+
+## Cómo correrlo
+
+Cualquier servidor estático sirve, no hay nada que compilar:
+
+```bash
+python3 -m http.server 8130
+```
+
+Y abre <http://localhost:8130>. La cámara necesita HTTPS o localhost, así que
+abrir el archivo directamente no funciona.
+
+Para probar sin cámara, <http://localhost:8130/?demo>: un feed sintético con
+unas manos falsas que se mueven solas.
+
+El detector de manos (MediaPipe Hand Landmarker) se carga desde un CDN, así
+que la primera vez hace falta conexión.
+
+## Efectos
+
+| Tecla | Efecto | Qué hace |
+|---|---|---|
+| 1 | Cámara térmica | Paleta de calor con retícula y lectura de temperatura |
+| 2 | Rayos X | Negativo en blanco y negro con grano y partículas |
+| 3 | Matriz LED | Rejilla de LEDs verdes que enciende según la luz |
+| 4 | Glitch | Franjas rotas, aberración cromática y barrido cian |
+| 5 | Cubos 3D | Cubos sombreados flotando por delante de la ventana |
+| 6 | Contorno neón | Bordes detectados (Sobel) en neón rosa y cian |
+| 7 | Semitono | Trama de puntos de imprenta |
+| 8 | Pixel art | Píxeles gordos y paleta reducida |
+| 9 | Duotono | Mapa de dos colores con grano |
+| 0 | VHS | Sangrado de color, ruido y banda de tracking |
+| Q | Caleidoscopio | Espejos radiales alrededor del centro del marco |
+| W | Estela de luz | Lo que brilla deja rastro y cambia de color |
+| E | Agua | Ondulación líquida con reflejos |
+
+Todos los efectos son shaders WebGL2 que se aplican al cuadro completo de la
+cámara; el recorte al marco es local y va aparte, así que el efecto sigue los
+dedos con latencia cero.
+
+### Gestos
+
+- **Marco de director** (pulgar e índice abiertos en L con las dos manos):
+  abre la ventana con el efecto. Dentro del marco se ve el efecto; fuera, la
+  cámara tal cual.
+- **Puño cerrado** (una mano, sostenido medio segundo): cambia a la cámara
+  trasera; otro puño vuelve a la frontal. Mientras lo sostienes se dibuja un
+  anillo que se va llenando, para que se vea venir. La frontal se muestra en
+  espejo y la trasera tal cual, como una cámara normal. Si el aparato solo
+  tiene una cámara, avisa y no pasa nada. El puño no cuenta mientras el marco
+  está hecho, así una mano medio escondida detrás de la otra no cambia nada.
+
+Los tres parámetros de cada efecto (intensidad, tono, detalle) están fijados
+en `efectos.js`, en el campo `ajustes` de cada uno.
+
+### Teclas
+
+| Tecla | Acción |
+|---|---|
+| 1–9, 0, Q, W, E | Elegir efecto |
+| [ ] o flechas | Efecto anterior / siguiente |
+| O | Ocultar o mostrar la interfaz (deja solo el video y el marco) |
+
+### En el móvil
+
+El video llena la pantalla entera, sin franjas negras arriba ni abajo: se
+recorta por los lados lo que no quepa. Los efectos van en una tira abajo que
+se desliza con el dedo. El puño es la forma de cambiar de cámara.
+
+## Cómo está hecho
+
+```
+index.html      página única, interfaz mínima
+main.js         loop de render y orquestación de las tres capas
+tracking.js     geometría del marco y pipeline de robustez (lógica pura)
+efectos.js      lista de efectos: shaders GLSL, ajustes y dibujos 2D
+fx.js           motor WebGL2: textura de cámara, un programa por efecto
+cubos.js        cubos 3D proyectados a mano sobre canvas 2D (lógica pura)
+composite.js    canvas, recorte, contorno, utilidades de geometría
+hands.js        carga de MediaPipe Hand Landmarker
+demo.js         feed sintético y manos falsas del modo ?demo
+ui.js           selector de efectos, pista y avisos
+tests/          pruebas de la lógica pura en Node y QA en navegador
+```
+
+Tres capas independientes sincronizadas en un solo `requestAnimationFrame`:
+
+1. **Tracking.** MediaPipe Hand Landmarker encuentra las dos manos por cuadro
+   y el cuadrilátero pasa por un pipeline de robustez: orden anatómico de las
+   esquinas, gates de separación y de área con histéresis, rechazo de
+   teletransporte, suavizado adaptativo por velocidad, sostenimiento de
+   dropout y fundido de presencia.
+2. **Efecto.** El cuadro de la cámara sube como textura y un fragment shader
+   lo pinta en un canvas WebGL del mismo tamaño. Los efectos con memoria (la
+   estela) leen además su propio cuadro anterior.
+3. **Compositing.** El resultado se dibuja alineado a pantalla y se revela
+   solo a través del cuadrilátero con un `clip()` del canvas, con contorno
+   punteado animado y puntos pulsantes del color del efecto. Algunos efectos
+   añaden dibujo 2D encima (la retícula térmica, los cubos).
+
+El puño también es lógica pura (`isFist`, `FistDetector` en `tracking.js`):
+un dedo doblado tiene la punta más cerca de la muñeca que su nudillo medio, y
+el detector pide que los cuatro dedos lo cumplan durante varios cuadros
+seguidos, con un tiempo de espera entre cambios y la obligación de abrir la
+mano antes de volver a disparar.
+
+Si el navegador no tiene WebGL2, los efectos caen a un filtro CSS aproximado.
+
+## Añadir un efecto
+
+Una entrada más en `EFECTOS`, en `efectos.js`: un `id`, un `label`, una
+`tecla` libre, un color de `acento`, los `ajustes` (intensidad, tono y
+detalle, de 0 a 1), sus `etiquetas` y el `glsl` con su `main()`. El preludio común ya declara la
+cámara (`cam(uv)`, con el espejo que toque), el tiempo, los tres ajustes y utilidades como
+`luma`, `hash` y `tono`. Las pruebas comprueban que la entrada sea coherente.
+
+## Pruebas
+
+La lógica pura (tracking, puño, geometría de los cubos, coherencia de los
+efectos) se prueba en Node, sin dependencias:
+
+```bash
+node tests/run-tests.mjs
+```
+
+Y una pasada de QA sobre la app entera en Chrome sin cabeza, que cubre lo que
+solo se ve ejecutando: que arranque limpia en modo demo, que los trece shaders
+compilen, que cada tecla elija su efecto y que en móvil el video llene la
+pantalla:
+
+```bash
+python3 -m http.server 8130 &
+npm i playwright   # solo la primera vez; usa el Google Chrome instalado
+node tests/qa-navegador.mjs
+```
+
+## Publicar
+
+La página se sirve tal cual desde GitHub Pages (rama `main`, carpeta raíz).
+Al publicar un cambio hay que subir el número `?v=N` del mapa de importaciones
+de `index.html`, porque el navegador cachea cada archivo por separado.
+
+## Referencias
+
+La idea del marco de dedos como ventana viene de la familia de
+[sophiamyang/finger-frame-effect](https://github.com/sophiamyang/finger-frame-effect).

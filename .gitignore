@@ -1,0 +1,20 @@
+# Capturas y media local: el video de quien usa la app nunca entra al repositorio.
+capturas/
+capturas-*/
+grabaciones/
+*.mp4
+*.mov
+*.webm
+*.gif
+*.png
+*.jpg
+*.jpeg
+# Salvo la media de ejemplo que sí se publica a propósito.
+!examples/**
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
