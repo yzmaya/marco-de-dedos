@@ -71,11 +71,16 @@ generativo; ver «Ir más allá» abajo.
   como una cámara normal. Si el aparato solo tiene una cámara, avisa y no
   pasa nada.
 
-  Con la trasera se usa la **cámara principal (1x)**, sin zoom digital. En
-  los iPhone con dos cámaras en vertical es la lente de **arriba**; la de
-  abajo (ultra gran angular) la tapa el cardboard y en el visor no se usa.
-  Solo hay una cámara activa a la vez, y el aviso dice qué lente es. Es la
-  que menos marea dentro del visor: su campo de visión (unos 70 grados) es el
+- **Botón de lente** (debajo del de cámara, solo con la trasera puesta, o la
+  tecla L): pasa a la siguiente lente trasera y la deja guardada. Sirve para
+  elegir la lente que **no tapa el visor**: con el cardboard puesto, tapa la
+  lente de abajo con un dedo y toca el botón hasta que la imagen deje de
+  ponerse negra. El aviso dice qué lente es (nombre corto y el nombre que le
+  da el sistema). Solo hay una cámara activa a la vez. La elegida se guarda y
+  manda sobre cualquier automatismo.
+
+  Si no se ha elegido ninguna, con la trasera se intenta la **cámara
+  principal (1x)**, sin zoom digital. Es la que menos marea dentro del visor: su campo de visión (unos 70 grados) es el
   más parecido al que dejan ver las lentes de un cardboard, así que las cosas
   salen casi del tamaño real. La ultra gran angular (0,5x) mete todo más
   lejos y curva los bordes, y eso desincroniza lo que ves con lo que siente
@@ -98,6 +103,7 @@ en `efectos.js`, en el campo `ajustes` de cada uno.
 | 1–9, 0, Q, W, E, R, T | Elegir efecto |
 | [ ] o flechas | Efecto anterior / siguiente |
 | C | Cambiar de cámara (lo mismo que el botón de la esquina) |
+| L | Siguiente lente trasera (lo mismo que el botón de abajo del de cámara) |
 | O | Ocultar o mostrar la interfaz (deja solo el video y el marco) |
 | + − | Afinar la escala de la vista de visor (se guarda) |
 | V | Forzar o quitar la vista para visor VR (para probarla en la computadora) |

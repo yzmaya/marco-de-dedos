@@ -28,11 +28,12 @@ function esCampoDeTexto(el) {
  * @param {object} opts
  * @param {(id:string)=>void} opts.onEfecto  efecto elegido
  * @param {()=>void} opts.onCamara             cambiar entre cámara frontal y trasera
+ * @param {()=>void} opts.onLente              pasar a la siguiente lente trasera
  * @param {()=>void} opts.onVR                 forzar o quitar la vista de visor
  * @param {(delta:number)=>void} opts.onVRZoom  afinar la escala del visor
  * @param {string} opts.efectoId             efecto inicial
  */
-export function createUI({ onEfecto, onCamara = () => {}, onVR = () => {}, onVRZoom = () => {}, efectoId }) {
+export function createUI({ onEfecto, onCamara = () => {}, onLente = () => {}, onVR = () => {}, onVRZoom = () => {}, efectoId }) {
   const el = (id) => document.getElementById(id);
   const toolbar = el("toolbar");
   const hint = el("hint");
@@ -80,6 +81,9 @@ export function createUI({ onEfecto, onCamara = () => {}, onVR = () => {}, onVRZ
     } else if (key === "c") {
       ev.preventDefault();
       onCamara();
+    } else if (key === "l") {
+      ev.preventDefault();
+      onLente();
     } else if (key === "v") {
       ev.preventDefault();
       onVR();
@@ -103,6 +107,10 @@ export function createUI({ onEfecto, onCamara = () => {}, onVR = () => {}, onVRZ
   el("camara-btn").addEventListener("click", (ev) => {
     ev.currentTarget.blur();
     onCamara();
+  });
+  el("lente-btn").addEventListener("click", (ev) => {
+    ev.currentTarget.blur();
+    onLente();
   });
 
   // Interfaz oculta: fuera todo menos el video y el marco. El aviso se

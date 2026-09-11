@@ -182,6 +182,29 @@
     #camara-btn:hover { background: rgba(255, 255, 255, 0.16); }
     #camara-btn:active { transform: scale(0.92); }
     #camara-btn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    /* Botón de lente: igual, debajo, y solo con la cámara trasera puesta. */
+    #lente-btn {
+      position: fixed;
+      top: calc(max(14px, env(safe-area-inset-top)) + 62px);
+      right: max(14px, env(safe-area-inset-right));
+      z-index: 9;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      background: rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(6px);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+      display: none; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition: background 0.15s, transform 0.1s;
+    }
+    body.trasera #lente-btn { display: flex; }
+    #lente-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    #lente-btn:active { transform: scale(0.92); }
+    #lente-btn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
     /* ---- interfaz oculta: solo el video y el marco ----
        También en la vista de visor VR: dentro del cardboard no hay quien
@@ -271,6 +294,13 @@
     </svg>
   </button>
 
+  <button id="lente-btn" type="button" title="Siguiente lente trasera (L)" aria-label="Siguiente lente trasera">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="6" y="2.5" width="12" height="19" rx="6" />
+      <circle cx="12" cy="8" r="2.6" /><circle cx="12" cy="16" r="2.6" />
+    </svg>
+  </button>
+
   <div id="hint">
     <div id="hint-text">Haz el marco de director: pulgar e índice abiertos en L con las dos manos. El botón de arriba cambia de cámara.</div>
   </div>
@@ -288,18 +318,18 @@
   <script type="importmap">
   {
     "imports": {
-      "./main.js": "./main.js?v=11",
-      "./efectos.js": "./efectos.js?v=11",
-      "./fx.js": "./fx.js?v=11",
-      "./cubos.js": "./cubos.js?v=11",
-      "./tracking.js": "./tracking.js?v=11",
-      "./composite.js": "./composite.js?v=11",
-      "./hands.js": "./hands.js?v=11",
-      "./demo.js": "./demo.js?v=11",
-      "./ui.js": "./ui.js?v=11"
+      "./main.js": "./main.js?v=12",
+      "./efectos.js": "./efectos.js?v=12",
+      "./fx.js": "./fx.js?v=12",
+      "./cubos.js": "./cubos.js?v=12",
+      "./tracking.js": "./tracking.js?v=12",
+      "./composite.js": "./composite.js?v=12",
+      "./hands.js": "./hands.js?v=12",
+      "./demo.js": "./demo.js?v=12",
+      "./ui.js": "./ui.js?v=12"
     }
   }
   </script>
-  <script type="module" src="./main.js?v=11"></script>
+  <script type="module" src="./main.js?v=12"></script>
 </body>
 </html>

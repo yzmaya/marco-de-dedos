@@ -86,9 +86,14 @@ const ui = createUI({
     ui.toast(enVR() ? "Vista para visor VR · V para volver" : "Vista normal", 2000);
     // Con la trasera, la lente depende de la vista: principal en el visor,
     // gran angular fuera de él.
-    if (facing === "environment") void cambiarLente(!enVR());
+    if (facing === "environment") {
+      void lenteElegida().then((elegida) => {
+        if (!elegida) void cambiarLente(!enVR());
+      });
+    }
   },
   onCamara: () => void cambiarCamara(),
+  onLente: () => void siguienteLente(),
   onVRZoom: (delta) => {
     vrZoom = Math.round(Math.min(1.6, Math.max(0.7, vrZoom + delta)) * 100) / 100;
     localStorage.setItem(VR_ZOOM_STORAGE, String(vrZoom));
@@ -197,7 +202,17 @@ async function cambiarCamara() {
 
   try {
     let nuevo = null;
-    try {
+    // Si ya se eligió a mano una lente trasera, esa manda sobre cualquier
+    // automatismo: es la que se comprobó que no queda tapada por el visor.
+    const elegida = destino === "environment" ? await lenteElegida() : null;
+    if (elegida) {
+      try {
+        nuevo = await abrirLente(elegida);
+      } catch (err) {
+        console.warn("La lente guardada no abrió:", err);
+      }
+    }
+    if (!nuevo) try {
       nuevo = await navigator.mediaDevices.getUserMedia(cameraConstraints(destino, true));
     } catch {
       const otras = (await navigator.mediaDevices.enumerateDevices())
@@ -214,18 +229,18 @@ async function cambiarCamara() {
       return;
     }
     // Con la trasera se entra en la vista de visor, y ahí va la lente
-    // principal (1x) sin zoom digital: es la que menos marea.
-    if (destino === "environment") nuevo = await ajustarLenteTrasera(nuevo, { granAngular: false });
+    // principal (1x) sin zoom digital: es la que menos marea. Si hay lente
+    // elegida a mano, solo se ajusta el zoom.
+    if (destino === "environment") {
+      nuevo = elegida ? await zoomUno(nuevo) : await ajustarLenteTrasera(nuevo, { granAngular: false });
+    }
     await ponerStream(nuevo);
     const real = nuevo.getVideoTracks()[0]?.getSettings().facingMode;
     facing = real || destino;
     espejo = facing !== "environment";
     vrForzado = null;
-    const lente = nombreLente(nuevo);
-    ui.toast(
-      espejo ? "Cámara frontal" : `Cámara trasera${lente ? ` · ${lente}` : ""} · vista para visor VR`,
-      2400
-    );
+    document.body.classList.toggle("trasera", !espejo);
+    ui.toast(espejo ? "Cámara frontal" : `Cámara trasera · ${descripcionLente(nuevo)} · vista para visor VR`, 3000);
   } catch (err) {
     console.error(err);
     try {
@@ -258,6 +273,113 @@ function nombreLente(stream) {
   if (ES_COMPUESTA.test(etiqueta)) return "lente combinada";
   if (/tele|telephoto/i.test(etiqueta)) return "teleobjetivo";
   return "principal 1x";
+}
+
+/** Nombre corto más el nombre que le da el sistema, para saber cuál es. */
+function descripcionLente(stream) {
+  const etiqueta = stream?.getVideoTracks?.()[0]?.label || "";
+  const corto = nombreLente(stream);
+  if (!etiqueta) return "lente sin nombre";
+  return corto === etiqueta ? corto : `${corto} (${etiqueta})`;
+}
+
+// ---- elegir la lente trasera a mano ----
+//
+// Adivinar por el nombre cuál es la lente de arriba y cuál la de abajo no es
+// fiable: cada modelo las ordena a su manera. Así que el botón de lente
+// recorre las cámaras traseras una por una y la elegida se guarda, con su
+// id y su nombre (el id puede cambiar entre sesiones en algunos navegadores;
+// el nombre sirve de respaldo).
+
+const LENTE_STORAGE = "ff-lente-trasera";
+
+async function camarasTraseras() {
+  return (await navigator.mediaDevices.enumerateDevices()).filter(
+    (d) => d.kind === "videoinput" && d.deviceId && !ES_FRONTAL.test(d.label)
+  );
+}
+
+function abrirLente(dev) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: dev.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false,
+  });
+}
+
+/** La lente guardada, si existe todavía en este aparato. */
+async function lenteElegida() {
+  let guardada = null;
+  try {
+    guardada = JSON.parse(localStorage.getItem(LENTE_STORAGE) || "null");
+  } catch {
+    guardada = null;
+  }
+  if (!guardada) return null;
+  const lista = await camarasTraseras();
+  return (
+    lista.find((d) => d.deviceId === guardada.deviceId) ||
+    lista.find((d) => guardada.label && d.label === guardada.label) ||
+    null
+  );
+}
+
+/** Zoom digital a 1 si la cámara lo admite. Devuelve el mismo stream. */
+async function zoomUno(stream) {
+  try {
+    const track = stream.getVideoTracks()[0];
+    const caps = track?.getCapabilities?.() || {};
+    if (caps.zoom) {
+      const zoom = Math.min(Math.max(1, caps.zoom.min), caps.zoom.max);
+      if (Math.abs((track.getSettings().zoom ?? 1) - zoom) > 1e-3) {
+        await track.applyConstraints({ advanced: [{ zoom }] });
+      }
+    }
+  } catch (err) {
+    console.warn("Sin zoom:", err);
+  }
+  return stream;
+}
+
+/** Pasa a la siguiente lente trasera y la deja guardada. */
+async function siguienteLente() {
+  if (cambiandoCamara || DEMO) return;
+  if (facing !== "environment") {
+    ui.toast("Primero pasa a la cámara trasera con el botón de arriba", 2400);
+    return;
+  }
+  cambiandoCamara = true;
+  const actual = video.srcObject;
+  try {
+    const lista = await camarasTraseras();
+    if (lista.length < 2) {
+      ui.toast("Este aparato solo tiene una cámara trasera", 2400);
+      return;
+    }
+    const idActual = actual?.getVideoTracks?.()[0]?.getSettings().deviceId;
+    const i = lista.findIndex((d) => d.deviceId === idActual);
+    const siguiente = (i + 1) % lista.length;
+    const dev = lista[siguiente];
+    pararStream(actual);
+    video.srcObject = null;
+    const nuevo = await zoomUno(await abrirLente(dev));
+    await ponerStream(nuevo);
+    localStorage.setItem(LENTE_STORAGE, JSON.stringify({ deviceId: dev.deviceId, label: dev.label }));
+    ui.toast(`Lente ${siguiente + 1} de ${lista.length}: ${descripcionLente(nuevo)} · guardada`, 3500);
+  } catch (err) {
+    console.error(err);
+    try {
+      await ponerStream(await navigator.mediaDevices.getUserMedia(cameraConstraints("environment")));
+      ui.toast(`Esa lente no abrió: ${err?.message || err}`, 3000);
+    } catch (err2) {
+      console.error(err2);
+      ui.fatal("Se perdió la cámara al cambiar de lente. Recarga la página.");
+    }
+  } finally {
+    tracker.reset();
+    lastVideoTime = -1;
+    lastHands = null;
+    cambiandoCamara = false;
+  }
 }
 
 /**
