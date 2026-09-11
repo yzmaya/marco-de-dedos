@@ -221,7 +221,11 @@ async function cambiarCamara() {
     facing = real || destino;
     espejo = facing !== "environment";
     vrForzado = null;
-    ui.toast(espejo ? "Cámara frontal" : "Cámara trasera · vista para visor VR", 2000);
+    const lente = nombreLente(nuevo);
+    ui.toast(
+      espejo ? "Cámara frontal" : `Cámara trasera${lente ? ` · ${lente}` : ""} · vista para visor VR`,
+      2400
+    );
   } catch (err) {
     console.error(err);
     try {
@@ -240,6 +244,21 @@ async function cambiarCamara() {
 
 const ES_ULTRA = /ultra|gran angular|0[.,]5/i;
 const ES_FRONTAL = /front|frontal|delantera/i;
+// Cámaras "virtuales" de iOS que juntan varias lentes (Back Dual Wide, Back
+// Triple) y cambian solas de lente para enfocar de cerca. Dentro del visor la
+// lente de abajo queda tapada, así que ese cambio automático daría negro: en
+// el visor se exige la lente principal a secas.
+const ES_COMPUESTA = /dual|triple|doble|fusion/i;
+
+/** Nombre corto de la lente que está en uso, para el aviso. */
+function nombreLente(stream) {
+  const etiqueta = stream?.getVideoTracks?.()[0]?.label || "";
+  if (!etiqueta) return "";
+  if (ES_ULTRA.test(etiqueta)) return "ultra gran angular";
+  if (ES_COMPUESTA.test(etiqueta)) return "lente combinada";
+  if (/tele|telephoto/i.test(etiqueta)) return "teleobjetivo";
+  return "principal 1x";
+}
 
 /**
  * Elige la lente de la cámara trasera.
@@ -247,7 +266,9 @@ const ES_FRONTAL = /front|frontal|delantera/i;
  * - En el visor (`granAngular: false`) va la principal (1x) con el zoom
  *   digital en 1: su campo de visión, unos 70 grados, es el más parecido al
  *   que dejan ver las lentes de un cardboard, así que las cosas salen casi
- *   del tamaño real y es lo que menos marea.
+ *   del tamaño real y es lo que menos marea. Es la lente de ARRIBA en los
+ *   iPhone con dos cámaras en vertical; la de abajo (ultra gran angular) la
+ *   tapa el cardboard y en el visor no se usa.
  * - Fuera del visor (`granAngular: true`) se busca la ultra gran angular (el
  *   iPhone la expone como cámara aparte) o se baja el zoom al mínimo si la
  *   cámara lo admite: con más campo visual las manos caben enteras y el
@@ -264,11 +285,11 @@ async function ajustarLenteTrasera(stream, { granAngular }) {
       (d) => d.kind === "videoinput" && d.deviceId && !ES_FRONTAL.test(d.label)
     );
     const actual = camaras.find((d) => d.deviceId === idActual);
-    const esUltraAhora = !!actual && ES_ULTRA.test(actual.label);
+    const noEsPrincipal = (d) => ES_ULTRA.test(d.label) || ES_COMPUESTA.test(d.label);
     const otra = granAngular
       ? camaras.find((d) => d.deviceId !== idActual && ES_ULTRA.test(d.label))
-      : esUltraAhora
-        ? camaras.find((d) => d.deviceId !== idActual && !ES_ULTRA.test(d.label))
+      : actual && noEsPrincipal(actual)
+        ? camaras.find((d) => d.deviceId !== idActual && !noEsPrincipal(d))
         : null;
     if (otra) {
       pararStream(stream);
@@ -303,6 +324,8 @@ async function cambiarLente(granAngular) {
   try {
     const nuevo = await ajustarLenteTrasera(video.srcObject, { granAngular });
     if (nuevo !== video.srcObject) await ponerStream(nuevo);
+    const lente = nombreLente(nuevo);
+    if (lente) ui.toast(`Lente ${lente}`, 1600);
   } catch (err) {
     console.error(err);
     ui.toast(`No se pudo cambiar de lente: ${err?.message || err}`, 3000);

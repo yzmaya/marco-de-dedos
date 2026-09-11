@@ -71,7 +71,10 @@ generativo; ver «Ir más allá» abajo.
   como una cámara normal. Si el aparato solo tiene una cámara, avisa y no
   pasa nada.
 
-  Con la trasera se usa la **cámara principal (1x)**, sin zoom digital. Es la
+  Con la trasera se usa la **cámara principal (1x)**, sin zoom digital. En
+  los iPhone con dos cámaras en vertical es la lente de **arriba**; la de
+  abajo (ultra gran angular) la tapa el cardboard y en el visor no se usa.
+  Solo hay una cámara activa a la vez, y el aviso dice qué lente es. Es la
   que menos marea dentro del visor: su campo de visión (unos 70 grados) es el
   más parecido al que dejan ver las lentes de un cardboard, así que las cosas
   salen casi del tamaño real. La ultra gran angular (0,5x) mete todo más
