@@ -133,14 +133,15 @@ export function quadScale(quad) {
 /**
  * Encuadre para un visor tipo cardboard: la misma escena dos veces, una por
  * ojo, cada una en su mitad de la pantalla. La escena se encaja al ancho de
- * la mitad y se acerca un poco (zoom): la lente solo deja ver el centro de
- * cada mitad, así que con un pelín de zoom se aprovecha mejor y lo que se
- * pierde por los lados no se echa de menos.
+ * la mitad. El `zoom` es la escala con la que se presenta: 1 deja la imagen
+ * de la cámara principal a un tamaño parecido al que ven los ojos a través
+ * de las lentes de un cardboard, que es lo que menos marea. Cada visor es
+ * distinto, así que se puede afinar con las teclas + y −.
  *
  * @returns {Array<{clip:{x,y,w,h}, x,y,w,h}>} recorte de cada ojo y dónde va
  *   la escena dentro (puede sobresalir del recorte: ese es el zoom).
  */
-export function encuadreVR(w, h, zoom = 1.2) {
+export function encuadreVR(w, h, zoom = 1) {
   const ojoW = w / 2;
   const dw = ojoW * zoom;
   const dh = ((h * ojoW) / w) * zoom;
@@ -156,7 +157,7 @@ export function encuadreVR(w, h, zoom = 1.2) {
 }
 
 /** Pinta la escena en estéreo lado a lado sobre `salida`. */
-export function drawVR(salida, escena, w, h, zoom = 1.2) {
+export function drawVR(salida, escena, w, h, zoom = 1) {
   salida.fillStyle = "#000";
   salida.fillRect(0, 0, w, h);
   for (const ojo of encuadreVR(w, h, zoom)) {

@@ -3,8 +3,8 @@
 Haz el gesto de marco de director con las dos manos frente a la cámara y el
 área que queda dentro de tus dedos se transforma con un efecto visual en
 tiempo real. Las manos y el fondo son reales; solo lo que se ve dentro del
-marco cambia. Cierra el puño y la app cambia entre la cámara frontal y la
-trasera.
+marco cambia. Junta las palmas 🙏 y la app cambia entre la cámara frontal y
+la trasera.
 
 **En vivo:** <https://yzmaya.github.io/marco-de-dedos/>
 **Modo demo, sin cámara:** <https://yzmaya.github.io/marco-de-dedos/?demo>
@@ -64,17 +64,25 @@ generativo; ver «Ir más allá» abajo.
 - **Marco de director** (pulgar e índice abiertos en L con las dos manos):
   abre la ventana con el efecto. Dentro del marco se ve el efecto; fuera, la
   cámara tal cual.
-- **Puño cerrado** (una mano, sostenido medio segundo): cambia a la cámara
-  trasera; otro puño vuelve a la frontal. Mientras lo sostienes se dibuja un
-  anillo que se va llenando, para que se vea venir. La frontal se muestra en
-  espejo y la trasera tal cual, como una cámara normal. Con la trasera la app
-  busca la lente ultra gran angular (0,5x) o baja el zoom al mínimo si la
-  cámara lo permite: con más campo visual las manos caben enteras a una
-  distancia cómoda. Si el aparato solo tiene una cámara, avisa y no pasa nada.
+- **Palmas juntas 🙏** (las dos manos, sostenido un tercio de segundo):
+  cambia a la cámara trasera; otra vez vuelve a la frontal. Mientras lo
+  sostienes se dibuja un anillo que se va llenando, para que se vea venir, y
+  hay que separar las manos antes de poder repetirlo. La frontal se muestra
+  en espejo y la trasera tal cual, como una cámara normal. Si el aparato solo
+  tiene una cámara, avisa y no pasa nada.
+
+  Con la trasera se usa la **cámara principal (1x)**, sin zoom digital. Es la
+  que menos marea dentro del visor: su campo de visión (unos 70 grados) es el
+  más parecido al que dejan ver las lentes de un cardboard, así que las cosas
+  salen casi del tamaño real. La ultra gran angular (0,5x) mete todo más
+  lejos y curva los bordes, y eso desincroniza lo que ves con lo que siente
+  el cuerpo. Si sales de la vista de visor con la tecla V, la app pasa a la
+  ultra gran angular (o baja el zoom al mínimo), que ahí sí ayuda a que las
+  manos quepan enteras.
 
   El detector de manos necesita ver la **palma** para dar puntos: si solo
   entran los dedos en el cuadro, no hay marco. Por eso importa el campo
-  visual, y por eso la pista de abajo avisa cuando ve una sola mano o ninguna. El puño no cuenta mientras el marco
+  visual, y por eso la pista de abajo avisa cuando ve una sola mano o ninguna. El gesto de las palmas no cuenta mientras el marco
   está hecho, así una mano medio escondida detrás de la otra no cambia nada.
 
 Los tres parámetros de cada efecto (intensidad, tono, detalle) están fijados
@@ -87,13 +95,14 @@ en `efectos.js`, en el campo `ajustes` de cada uno.
 | 1–9, 0, Q, W, E, R, T | Elegir efecto |
 | [ ] o flechas | Efecto anterior / siguiente |
 | O | Ocultar o mostrar la interfaz (deja solo el video y el marco) |
+| + − | Afinar la escala de la vista de visor (se guarda) |
 | V | Forzar o quitar la vista para visor VR (para probarla en la computadora) |
 
 ### Con un visor VR (cardboard)
 
 Al pasar a la cámara trasera la pantalla se parte en dos mitades iguales, una
 por ojo, y la interfaz desaparece. Se mete el teléfono apaisado en el visor y
-listo. Elige el efecto antes de cambiar de cámara; dentro del visor el puño
+listo. Elige el efecto antes de cambiar de cámara; dentro del visor juntar las palmas
 sigue funcionando para volver a la frontal (y a la vista normal).
 
 Es la misma imagen para los dos ojos: una cámara sola no da profundidad, y el
@@ -111,7 +120,7 @@ pestañas. La página lleva el manifest y el icono para eso.
 
 El video llena la pantalla entera, sin franjas negras arriba ni abajo: se
 recorta por los lados lo que no quepa. Los efectos van en una tira abajo que
-se desliza con el dedo. El puño es la forma de cambiar de cámara.
+se desliza con el dedo. Juntar las palmas es la forma de cambiar de cámara.
 
 ## Cómo está hecho
 
@@ -145,11 +154,12 @@ Tres capas independientes sincronizadas en un solo `requestAnimationFrame`:
    punteado animado y puntos pulsantes del color del efecto. Algunos efectos
    añaden dibujo 2D encima (la retícula térmica, los cubos).
 
-El puño también es lógica pura (`isFist`, `FistDetector` en `tracking.js`):
-un dedo doblado tiene la punta más cerca de la muñeca que su nudillo medio, y
-el detector pide que los cuatro dedos lo cumplan durante varios cuadros
-seguidos, con un tiempo de espera entre cambios y la obligación de abrir la
-mano antes de volver a disparar.
+Las palmas juntas también son lógica pura (`prayerCenter`, `PalmsDetector`
+en `tracking.js`): dos manos con índice y medio estirados y las muñecas, los
+nudillos y las puntas casi pegados. El detector pide que se sostenga varios
+cuadros seguidos, perdona los parpadeos del detector de manos (en ese gesto
+las manos se tapan entre sí), pone un tiempo de espera entre cambios y obliga
+a separar las manos antes de volver a disparar.
 
 Si el navegador no tiene WebGL2, los efectos caen a un filtro CSS aproximado.
 
@@ -181,7 +191,7 @@ cámara (`cam(uv)`, con el espejo que toque), el tiempo, los tres ajustes y util
 
 ## Pruebas
 
-La lógica pura (tracking, puño, geometría de los cubos, coherencia de los
+La lógica pura (tracking, palmas juntas, geometría de los cubos, coherencia de los
 efectos) se prueba en Node, sin dependencias:
 
 ```bash

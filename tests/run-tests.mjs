@@ -22,10 +22,9 @@ import {
   THUMB_TIP,
   WRIST,
   handInfo,
-  isFist,
-  fistHand,
-  FistDetector,
-  FIST_DEFAULTS,
+  prayerCenter,
+  PalmsDetector,
+  PALMS_DEFAULTS,
 } from "../tracking.js";
 import { withAlpha, FpsMeter, quadPoint, quadScale, encuadreVR } from "../composite.js";
 import {
@@ -309,16 +308,15 @@ test("el tracker sigue el marco de demostración cuadro a cuadro", () => {
   assert.ok(polygonArea(t.corners) > W * H * 0.05);
 });
 
-// --------------------------------------------------------------------- puño
-group("Puño (cambio de cámara)");
+// ------------------------------------------------------- palmas juntas
+group("Palmas juntas 🙏 (cambio de cámara)");
 
 /**
- * Mano con la muñeca en (0.5, 0.8) y los dedos hacia arriba. `curl` de 0 a 1:
- * 0 es la mano abierta (puntas lejos), 1 el puño (puntas plegadas a la palma).
+ * Una mano con la muñeca en `wrist`, dedos hacia arriba, de tamaño `size`
+ * (muñeca a nudillo medio). `curl` de 0 a 1: 0 abierta, 1 puño.
  */
-function makeHandCurl(curl) {
-  const wrist = { x: 0.5, y: 0.8, z: 0 };
-  const lm = Array.from({ length: 21 }, () => ({ ...wrist }));
+function makeHandAt(wrist, size = 0.18, curl = 0) {
+  const lm = Array.from({ length: 21 }, () => ({ ...wrist, z: 0 }));
   const dedos = [
     [5, 6, 7, 8],
     [9, 10, 11, 12],
@@ -326,80 +324,102 @@ function makeHandCurl(curl) {
     [17, 18, 19, 20],
   ];
   dedos.forEach((idx, k) => {
-    const x = 0.44 + k * 0.04;
-    lm[idx[0]] = { x, y: 0.62, z: 0 }; // nudillo base
-    lm[idx[1]] = { x, y: 0.55, z: 0 }; // nudillo medio (PIP)
-    lm[idx[2]] = { x, y: 0.55 - 0.06 * (1 - curl), z: 0 };
-    // La punta: estirada queda a 0.42; plegada vuelve casi a la palma (0.7).
-    lm[idx[3]] = { x, y: 0.42 + (0.7 - 0.42) * curl, z: 0 };
+    const x = wrist.x + (k - 1.5) * size * 0.22;
+    lm[idx[0]] = { x, y: wrist.y - size, z: 0 };            // nudillo base
+    lm[idx[1]] = { x, y: wrist.y - size * 1.4, z: 0 };      // nudillo medio (PIP)
+    lm[idx[2]] = { x, y: wrist.y - size * (1.4 + 0.3 * (1 - curl)), z: 0 };
+    // Punta: estirada a 2.1 tamaños; plegada vuelve casi a la palma.
+    lm[idx[3]] = { x, y: wrist.y - size * (2.1 - 1.6 * curl), z: 0 };
   });
-  lm[1] = { x: 0.44, y: 0.74, z: 0 };
-  lm[4] = { x: 0.38, y: 0.62, z: 0 };
+  lm[1] = { x: wrist.x - size * 0.4, y: wrist.y - size * 0.3, z: 0 };
+  lm[4] = { x: wrist.x - size * 0.7, y: wrist.y - size * 1.0, z: 0 };
   return lm;
 }
 
-test("una mano abierta no es puño; una cerrada sí, mire hacia donde mire", () => {
-  assert.equal(isFist(makeHandCurl(0)), false);
-  assert.equal(isFist(makeHandCurl(1)), true);
-  // Girada 90 grados sigue siendo puño: la regla no depende de la orientación.
-  const w = makeHandCurl(1)[WRIST];
-  const girada = makeHandCurl(1).map((p) => ({ x: w.x + (p.y - w.y), y: w.y - (p.x - w.x), z: 0 }));
-  assert.equal(isFist(girada), true);
-  assert.equal(isFist(null), false);
+/** Dos manos abiertas, una junto a la otra, separadas `gap` tamaños de mano. */
+function makePrayer(gap = 0.4, curl = 0) {
+  const size = 0.18;
+  return [
+    makeHandAt({ x: 0.5 - (gap * size) / 2, y: 0.8 }, size, curl),
+    makeHandAt({ x: 0.5 + (gap * size) / 2, y: 0.8 }, size, curl),
+  ];
+}
+
+test("las palmas juntas dan un centro; separadas, no", () => {
+  const c = prayerCenter(makePrayer(0.4));
+  assert.ok(c, "juntas");
+  assert.ok(Math.abs(c.x - 0.5) < 0.18 * 0.5, "el centro queda entre las dos manos");
+  assert.equal(prayerCenter(makePrayer(2.0)), null, "a dos manos de distancia no es el gesto");
+  assert.equal(prayerCenter(makePrayer(1.05)), null, "justo por fuera del umbral tampoco");
 });
 
-test("un dedo estirado deshace el puño", () => {
-  const casi = makeHandCurl(1);
-  casi[INDEX_TIP] = { x: 0.44, y: 0.42, z: 0 };
-  assert.equal(isFist(casi), false);
+test("dos puños juntos no son palmas juntas", () => {
+  assert.equal(prayerCenter(makePrayer(0.4, 1)), null);
 });
 
-test("el marco de dedos nunca se lee como puño", () => {
-  for (const lm of makeFakeHands(0)) assert.equal(isFist(lm), false);
-  assert.equal(fistHand(makeFakeHands(0)), null);
+test("hace falta ver exactamente dos manos", () => {
+  const [a, b] = makePrayer(0.4);
+  assert.equal(prayerCenter(null), null);
+  assert.equal(prayerCenter([a]), null);
+  assert.equal(prayerCenter([a, b, a]), null);
 });
 
-test("fistHand encuentra la mano cerrada entre dos", () => {
-  const cerrada = makeHandCurl(1);
-  assert.equal(fistHand([makeHandCurl(0), cerrada]), cerrada);
+test("dos detecciones de la misma mano (encimadas) no cuentan", () => {
+  const [a] = makePrayer(0.4);
+  const copia = a.map((p) => ({ ...p }));
+  assert.equal(prayerCenter([a, copia]), null);
 });
 
-test("el detector dispara una sola vez tras sostener el puño, y exige abrir la mano", () => {
-  const d = new FistDetector();
-  const puño = [makeHandCurl(1)];
+test("el gesto no depende de la orientación", () => {
+  const manos = makePrayer(0.4).map((lm) =>
+    lm.map((p) => ({ x: 0.5 + (p.y - 0.8), y: 0.5 - (p.x - 0.5), z: 0 }))
+  );
+  assert.ok(prayerCenter(manos), "girado 90 grados sigue siendo el gesto");
+});
+
+test("el marco de dedos nunca se lee como palmas juntas", () => {
+  for (let f = 0; f < 60; f++) assert.equal(prayerCenter(makeFakeHands(f / 30)), null);
+});
+
+test("el detector dispara una vez tras sostener, perdona parpadeos y exige separar las manos", () => {
+  const d = new PalmsDetector();
+  const juntas = makePrayer(0.4);
+  const o = PALMS_DEFAULTS;
   let disparos = 0;
   let t = 0;
-  for (let i = 0; i < FIST_DEFAULTS.holdFrames - 1; i++) {
-    if (d.update(puño, (t += 33))) disparos++;
-  }
+  for (let i = 0; i < o.holdFrames - 3; i++) if (d.update(juntas, (t += 33))) disparos++;
   assert.equal(disparos, 0, "antes de holdFrames no dispara");
   assert.ok(d.progress > 0.5 && d.progress < 1, "el anillo va llenándose");
-  assert.equal(d.update(puño, (t += 33)), true, "dispara al llegar");
-  for (let i = 0; i < 60; i++) if (d.update(puño, (t += 33))) disparos++;
-  assert.equal(disparos, 0, "sostener el puño no vuelve a disparar");
+  // Un parpadeo del detector (menos de graceFrames) no reinicia la cuenta.
+  for (let i = 0; i < o.graceFrames; i++) d.update(null, (t += 33));
+  assert.ok(d.progress > 0.5, "el parpadeo se perdona");
+  for (let i = 0; i < 3; i++) if (d.update(juntas, (t += 33))) disparos++;
+  assert.equal(disparos, 1, "dispara al completar");
+  for (let i = 0; i < 60; i++) if (d.update(juntas, (t += 33))) disparos++;
+  assert.equal(disparos, 1, "sostener el gesto no vuelve a disparar");
   assert.equal(d.progress, 0, "y el anillo se apaga");
-  // Abrir la mano brevemente no basta: hace falta releaseFrames.
-  d.update(null, (t += 33));
-  for (let i = 0; i < FIST_DEFAULTS.holdFrames + 2; i++) if (d.update(puño, (t += 33))) disparos++;
-  assert.equal(disparos, 0, "un parpadeo sin puño no rearma");
-  for (let i = 0; i < FIST_DEFAULTS.releaseFrames; i++) d.update(null, (t += 33));
-  t += FIST_DEFAULTS.cooldownMs;
-  for (let i = 0; i < FIST_DEFAULTS.holdFrames; i++) if (d.update(puño, (t += 33))) disparos++;
-  assert.equal(disparos, 1, "abrir la mano y cerrarla de nuevo dispara otra vez");
+  // Separar poco tiempo no basta: hace falta releaseFrames.
+  for (let i = 0; i < o.releaseFrames - 1; i++) d.update(null, (t += 33));
+  t += o.cooldownMs;
+  for (let i = 0; i < o.holdFrames + 2; i++) if (d.update(juntas, (t += 33))) disparos++;
+  assert.equal(disparos, 1, "sin separar lo suficiente no rearma");
+  for (let i = 0; i < o.releaseFrames; i++) d.update(null, (t += 33));
+  for (let i = 0; i < o.holdFrames; i++) if (d.update(juntas, (t += 33))) disparos++;
+  assert.equal(disparos, 2, "separar y volver a juntar dispara otra vez");
 });
 
 test("el detector respeta el tiempo de espera entre cambios", () => {
-  const d = new FistDetector({ holdFrames: 3, releaseFrames: 2, cooldownMs: 1000 });
-  const puño = [makeHandCurl(1)];
+  const d = new PalmsDetector({ holdFrames: 3, graceFrames: 0, releaseFrames: 2, cooldownMs: 1000 });
+  const juntas = makePrayer(0.4);
   let t = 0;
-  for (let i = 0; i < 3; i++) d.update(puño, (t += 33));
+  for (let i = 0; i < 3; i++) d.update(juntas, (t += 33));
   assert.equal(d.lastFireAt, t);
   for (let i = 0; i < 2; i++) d.update(null, (t += 33));
   let disparos = 0;
-  for (let i = 0; i < 3; i++) if (d.update(puño, (t += 33))) disparos++;
+  for (let i = 0; i < 3; i++) if (d.update(juntas, (t += 33))) disparos++;
   assert.equal(disparos, 0, "dentro del cooldown no dispara");
   t += 1000;
-  assert.equal(d.update(puño, t), true, "pasado el cooldown, sí");
+  assert.equal(d.update(juntas, t), true, "pasado el cooldown, sí");
 });
 
 // -------------------------------------------------------------------- cubos

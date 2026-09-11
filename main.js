@@ -7,8 +7,8 @@
 // Todo corre en el navegador, en un único requestAnimationFrame. No hay
 // servidor, ni clave, ni modelo remoto: la cámara nunca sale de esta pestaña.
 //
-// Gestos: el marco de director abre la ventana con el efecto; un puño cerrado
-// y sostenido cambia entre la cámara frontal y la trasera.
+// Gestos: el marco de director abre la ventana con el efecto; las palmas juntas
+// sostenidas cambian entre la cámara frontal y la trasera.
 //
 // Con la trasera la pantalla se parte en dos mitades iguales, una por ojo,
 // para meter el teléfono en un visor tipo cardboard. Todo se compone en una
@@ -17,7 +17,7 @@
 import {
   computeQuad,
   FrameTracker,
-  FistDetector,
+  PalmsDetector,
   TRACKING_DEFAULTS,
   handInfo,
   centroid,
@@ -51,7 +51,7 @@ let efectoId = EFECTOS.some((e) => e.id === settings.efectoId)
   : EFECTO_INICIAL;
 
 const tracker = new FrameTracker();
-const puno = new FistDetector();
+const palmas = new PalmsDetector();
 let landmarker = null;
 let lastVideoTime = -1;
 let lastHands = null;
@@ -67,6 +67,13 @@ let vrForzado = null;
 function enVR() {
   return vrForzado ?? facing === "environment";
 }
+/**
+ * Escala de la vista de visor. 1 = la cámara principal a un tamaño parecido
+ * al real a través de las lentes de un cardboard. Cada visor es distinto, así
+ * que se afina con + y − y se guarda.
+ */
+const VR_ZOOM_STORAGE = "ff-vr-zoom";
+let vrZoom = Math.min(1.6, Math.max(0.7, Number(localStorage.getItem(VR_ZOOM_STORAGE)) || 1));
 
 function efectoActual() {
   return buscarEfecto(efectoId);
@@ -80,6 +87,17 @@ const ui = createUI({
   onVR: () => {
     vrForzado = !enVR();
     ui.toast(enVR() ? "Vista para visor VR · V para volver" : "Vista normal", 2000);
+    // Con la trasera, la lente depende de la vista: principal en el visor,
+    // gran angular fuera de él.
+    if (facing === "environment") void cambiarLente(!enVR());
+  },
+  onVRZoom: (delta) => {
+    vrZoom = Math.round(Math.min(1.6, Math.max(0.7, vrZoom + delta)) * 100) / 100;
+    localStorage.setItem(VR_ZOOM_STORAGE, String(vrZoom));
+    ui.toast(
+      `Escala del visor ${vrZoom.toFixed(2)}×${Math.abs(vrZoom - 1) < 0.001 ? " · tamaño real aprox." : ""}`,
+      1600
+    );
   },
 });
 
@@ -197,19 +215,15 @@ async function cambiarCamara() {
       await restaurar("Este aparato solo tiene una cámara");
       return;
     }
-    let granAngular = false;
-    if (destino === "environment") ({ stream: nuevo, granAngular } = await preferirGranAngular(nuevo));
+    // Con la trasera se entra en la vista de visor, y ahí va la lente
+    // principal (1x) sin zoom digital: es la que menos marea.
+    if (destino === "environment") nuevo = await ajustarLenteTrasera(nuevo, { granAngular: false });
     await ponerStream(nuevo);
     const real = nuevo.getVideoTracks()[0]?.getSettings().facingMode;
     facing = real || destino;
     espejo = facing !== "environment";
     vrForzado = null;
-    ui.toast(
-      espejo
-        ? "Cámara frontal"
-        : `Cámara trasera${granAngular ? " · gran angular" : ""} · vista para visor VR`,
-      2000
-    );
+    ui.toast(espejo ? "Cámara frontal" : "Cámara trasera · vista para visor VR", 2000);
   } catch (err) {
     console.error(err);
     try {
@@ -220,56 +234,88 @@ async function cambiarCamara() {
     }
   } finally {
     tracker.reset();
-    puno.reset();
+    palmas.reset();
     lastVideoTime = -1;
     lastHands = null;
     cambiandoCamara = false;
   }
 }
 
+const ES_ULTRA = /ultra|gran angular|0[.,]5/i;
+const ES_FRONTAL = /front|frontal|delantera/i;
+
 /**
- * Con la trasera, cuanto más campo visual mejor: el marco se hace con los
- * brazos a media distancia y con la lente normal las manos salen cortadas por
- * los bordes, y sin palma el detector no da puntos. Así que se busca la lente
- * ultra gran angular (el iPhone la expone como cámara aparte) y, si no la hay,
- * se baja el zoom al mínimo cuando la cámara lo admite (0,5x en varios
- * Android). Si nada de eso existe, se queda la que vino.
+ * Elige la lente de la cámara trasera.
+ *
+ * - En el visor (`granAngular: false`) va la principal (1x) con el zoom
+ *   digital en 1: su campo de visión, unos 70 grados, es el más parecido al
+ *   que dejan ver las lentes de un cardboard, así que las cosas salen casi
+ *   del tamaño real y es lo que menos marea.
+ * - Fuera del visor (`granAngular: true`) se busca la ultra gran angular (el
+ *   iPhone la expone como cámara aparte) o se baja el zoom al mínimo si la
+ *   cámara lo admite: con más campo visual las manos caben enteras y el
+ *   marco se hace a una distancia cómoda.
+ *
+ * Devuelve el stream que toque (el mismo si no hubo que cambiar). iOS solo
+ * deja una captura viva, así que antes de pedir otra lente se suelta esta.
  */
-async function preferirGranAngular(stream) {
+async function ajustarLenteTrasera(stream, { granAngular }) {
   let track = stream.getVideoTracks()[0];
   const idActual = track?.getSettings().deviceId;
   try {
-    const ultra = (await navigator.mediaDevices.enumerateDevices()).find(
-      (d) =>
-        d.kind === "videoinput" &&
-        d.deviceId &&
-        d.deviceId !== idActual &&
-        /ultra|gran angular|0[.,]5/i.test(d.label) &&
-        !/front|frontal|delantera/i.test(d.label)
+    const camaras = (await navigator.mediaDevices.enumerateDevices()).filter(
+      (d) => d.kind === "videoinput" && d.deviceId && !ES_FRONTAL.test(d.label)
     );
-    if (ultra) {
-      // iOS solo deja una captura viva: soltar antes de pedir la otra lente.
+    const actual = camaras.find((d) => d.deviceId === idActual);
+    const esUltraAhora = !!actual && ES_ULTRA.test(actual.label);
+    const otra = granAngular
+      ? camaras.find((d) => d.deviceId !== idActual && ES_ULTRA.test(d.label))
+      : esUltraAhora
+        ? camaras.find((d) => d.deviceId !== idActual && !ES_ULTRA.test(d.label))
+        : null;
+    if (otra) {
       pararStream(stream);
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: ultra.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { deviceId: { exact: otra.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
-        return { stream, granAngular: true };
       } catch {
         stream = await navigator.mediaDevices.getUserMedia(cameraConstraints("environment", true));
-        track = stream.getVideoTracks()[0];
+      }
+      track = stream.getVideoTracks()[0];
+    }
+    // Zoom digital: al mínimo para gran angular, a 1 para el visor.
+    const caps = track?.getCapabilities?.() || {};
+    if (caps.zoom) {
+      const zoom = granAngular ? caps.zoom.min : Math.min(Math.max(1, caps.zoom.min), caps.zoom.max);
+      if (Math.abs((track.getSettings().zoom ?? 1) - zoom) > 1e-3) {
+        await track.applyConstraints({ advanced: [{ zoom }] });
       }
     }
-    const caps = track?.getCapabilities?.() || {};
-    if (caps.zoom && caps.zoom.min < 1) {
-      await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
-      return { stream, granAngular: true };
-    }
   } catch (err) {
-    console.warn("Sin gran angular:", err);
+    console.warn("No se pudo ajustar la lente:", err);
   }
-  return { stream, granAngular: false };
+  return stream;
+}
+
+/** Cambia de lente sin cambiar de lado (al entrar o salir del visor con V). */
+async function cambiarLente(granAngular) {
+  if (cambiandoCamara || DEMO || facing !== "environment") return;
+  cambiandoCamara = true;
+  try {
+    const nuevo = await ajustarLenteTrasera(video.srcObject, { granAngular });
+    if (nuevo !== video.srcObject) await ponerStream(nuevo);
+  } catch (err) {
+    console.error(err);
+    ui.toast(`No se pudo cambiar de lente: ${err?.message || err}`, 3000);
+  } finally {
+    tracker.reset();
+    palmas.reset();
+    lastVideoTime = -1;
+    lastHands = null;
+    cambiandoCamara = false;
+  }
 }
 
 /** La escena y la salida siguen al video. Devuelve true si cambió el tamaño. */
@@ -287,7 +333,7 @@ function presentar() {
     vrAnterior = vr;
     if (vr) avisarPantallaCompleta();
   }
-  if (vr) drawVR(salida, escena, canvas.width, canvas.height);
+  if (vr) drawVR(salida, escena, canvas.width, canvas.height, vrZoom);
   else salida.drawImage(escena, 0, 0);
 }
 let vrAnterior = false;
@@ -357,9 +403,10 @@ function loop() {
   });
   tracker.update(target, w);
 
-  // El puño solo cuenta cuando NO hay marco: con el marco hecho, una mano
-  // medio escondida detrás de la otra no debe cambiar de cámara.
-  if (!DEMO && puno.update(tracker.active ? null : lastHands, now)) {
+  // Las palmas juntas solo cuentan cuando NO hay marco: con el marco hecho
+  // no hay forma de tener las manos pegadas, y así un cruce de manos raro no
+  // cambia de cámara.
+  if (!DEMO && palmas.update(tracker.active ? null : lastHands, now)) {
     void cambiarCamara();
   }
 
@@ -372,15 +419,15 @@ function loop() {
     });
   }
 
-  if (puno.progress > 0 && puno.hand) {
-    drawPuno(ctx, toPixel(centroid(puno.hand), w, h, espejo), puno.progress, w);
+  if (palmas.progress > 0 && palmas.punto) {
+    drawGesto(ctx, toPixel(palmas.punto, w, h, espejo), palmas.progress, w);
   }
 
   // Sin marco: enseñar qué ve el detector y decir qué falta. Sin esto, cuando
   // el gesto no entra no hay forma de saber si es que no ve las manos o si es
   // que la L está poco abierta.
   const sinMarco = tracker.presence <= 0.5;
-  if (sinMarco && !puno.hand) {
+  if (sinMarco && !palmas.punto) {
     const manos = lastHands ?? [];
     const infos = manos.map((lm) => handInfo(lm, { width: w, height: h, mirror: espejo }));
     drawManos(ctx, infos, w);
@@ -475,8 +522,8 @@ function drawWindow(quad, w, h) {
   efecto.overlayLibre?.(ctx, info);
 }
 
-/** Anillo que se llena mientras se sostiene el puño: avisa de lo que va a pasar. */
-function drawPuno(ctx, p, progress, w) {
+/** Anillo que se llena mientras se sostienen las palmas juntas: avisa de lo que va a pasar. */
+function drawGesto(ctx, p, progress, w) {
   const r = Math.max(22, w * 0.03);
   const acento = efectoActual().acento;
   ctx.save();
@@ -493,11 +540,11 @@ function drawPuno(ctx, p, progress, w) {
   ctx.arc(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
   ctx.stroke();
   ctx.shadowBlur = 0;
-  ctx.font = `700 ${Math.round(r * 0.55)}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.font = `${Math.round(r * 0.9)}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple Color Emoji", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(255,255,255,0.95)";
-  ctx.fillText("↺", p.x, p.y);
+  ctx.fillText("🙏", p.x, p.y);
   ctx.restore();
 }
 

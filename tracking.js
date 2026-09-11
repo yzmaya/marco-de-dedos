@@ -241,83 +241,110 @@ export class FrameTracker {
   }
 }
 
-// ---------------------------------------------------------------- puño
+// ------------------------------------------------- palmas juntas 🙏
 //
-// Un puño cerrado cambia de cámara (frontal ↔ trasera). Es lógica pura, como
-// el resto del módulo, y se prueba en Node.
+// Juntar las palmas cambia de cámara (frontal ↔ trasera). Es lógica pura,
+// como el resto del módulo, y se prueba en Node.
 
-const DEDOS = [
-  [INDEX_TIP, INDEX_PIP],
-  [MIDDLE_TIP, MIDDLE_PIP],
-  [RING_TIP, RING_PIP],
-  [PINKY_TIP, PINKY_PIP],
-];
-
-/**
- * ¿Está la mano cerrada en puño? Un dedo estirado tiene la punta más lejos
- * de la muñeca que su nudillo medio; doblado, la punta se acerca a la palma
- * y queda más cerca que el nudillo. Se piden los cuatro dedos (el pulgar se
- * ignora: en un puño puede quedar por fuera o por dentro). Es independiente
- * de la orientación de la mano, no hace falta que esté derecha.
- */
-export function isFist(lm) {
-  if (!lm || lm.length < 21) return false;
-  const w = lm[WRIST];
-  return DEDOS.every(([tip, pip]) => dist(lm[tip], w) < dist(lm[pip], w));
+/** Tamaño de la mano, de muñeca a nudillo medio, en coordenadas normalizadas. */
+export function handScale(lm) {
+  return dist(lm[WRIST], lm[MIDDLE_MCP]) + 1e-6;
 }
 
-/** La primera mano en puño, o null. */
-export function fistHand(hands) {
-  if (!hands) return null;
-  return hands.find(isFist) ?? null;
+function dedoEstirado(lm, tip, pip) {
+  return dist(lm[tip], lm[WRIST]) > dist(lm[pip], lm[WRIST]);
 }
 
-export const FIST_DEFAULTS = {
-  // Cuadros seguidos de puño para disparar: evita que un cierre fugaz de la
-  // mano al hacer el marco cambie de cámara.
-  holdFrames: 12,
-  // Cuadros sin puño para volver a armar: hay que abrir la mano y volver a
-  // cerrarla para disparar otra vez.
-  releaseFrames: 6,
-  // Tiempo mínimo entre cambios: cambiar de cámara tarda y no hay que
-  // encadenar dos cambios por un puño largo.
-  cooldownMs: 2000,
+export const PALMS_DEFAULTS = {
+  // Distancias máximas entre las dos manos, en múltiplos del tamaño de mano:
+  // muñecas, nudillos medios y puntas (índice, medio y anular).
+  wristsMax: 1.1,
+  knucklesMax: 0.9,
+  tipsMax: 0.8,
+  // Distancia mínima entre muñecas: dos detecciones de la MISMA mano salen
+  // una encima de otra, y eso no es un gesto.
+  wristsMin: 0.12,
+  // Cuadros seguidos de gesto para disparar.
+  holdFrames: 10,
+  // Cuadros sin gesto que se perdonan sin perder lo acumulado: con las
+  // palmas juntas las manos se tapan entre sí y el detector parpadea.
+  graceFrames: 4,
+  // Cuadros sin gesto para volver a armar: hay que separar las manos.
+  releaseFrames: 8,
+  // Tiempo mínimo entre cambios: cambiar de cámara tarda.
+  cooldownMs: 2500,
 };
 
 /**
- * Detector de puño sostenido. update() devuelve true UNA vez por puño, y solo
- * cuando se ha mantenido holdFrames cuadros; después hay que abrir la mano.
+ * ¿Están las dos manos juntas palma con palma? Devuelve el centro del gesto
+ * (normalizado) o null. Se pide: exactamente dos manos, índice y medio
+ * estirados en las dos (un puño no vale), y muñecas, nudillos y puntas casi
+ * pegados. No depende de la orientación: vale con los dedos hacia arriba,
+ * hacia la cámara o de lado.
  */
-export class FistDetector {
-  constructor(opts = {}) {
-    this.opts = { ...FIST_DEFAULTS, ...opts };
+export function prayerCenter(hands, opts = PALMS_DEFAULTS) {
+  if (!hands || hands.length !== 2) return null;
+  const [a, b] = hands;
+  if (a.length < 21 || b.length < 21) return null;
+  for (const lm of [a, b]) {
+    if (!dedoEstirado(lm, INDEX_TIP, INDEX_PIP) || !dedoEstirado(lm, MIDDLE_TIP, MIDDLE_PIP)) {
+      return null;
+    }
+  }
+  const scale = (handScale(a) + handScale(b)) / 2;
+  const munecas = dist(a[WRIST], b[WRIST]);
+  if (munecas > scale * opts.wristsMax || munecas < scale * opts.wristsMin) return null;
+  if (dist(a[MIDDLE_MCP], b[MIDDLE_MCP]) > scale * opts.knucklesMax) return null;
+  const puntas =
+    [INDEX_TIP, MIDDLE_TIP, RING_TIP].reduce((s, i) => s + dist(a[i], b[i]), 0) / 3;
+  if (puntas > scale * opts.tipsMax) return null;
+  return centroid([a[WRIST], b[WRIST], a[MIDDLE_TIP], b[MIDDLE_TIP]]);
+}
+
+/**
+ * Detector de gesto sostenido. update() devuelve true UNA vez por gesto, y
+ * solo cuando se ha mantenido holdFrames cuadros; después hay que deshacerlo
+ * releaseFrames cuadros para poder repetir. `detectar(hands, opts)` devuelve
+ * el punto del gesto o null.
+ */
+export class GestureDetector {
+  constructor(detectar, opts = {}) {
+    this.detectar = detectar;
+    this.opts = { ...PALMS_DEFAULTS, ...opts };
     this.reset();
   }
 
   reset() {
     this.held = 0;
+    this.missed = 0;
     this.released = 0;
     this.armed = true;
     this.lastFireAt = -Infinity;
-    this.hand = null;
+    /** Punto del gesto (normalizado) mientras se sostiene, o null. */
+    this.punto = null;
   }
 
   /**
    * @param {Array|null} hands landmarks de este cuadro (null si no hay)
    * @param {number} nowMs reloj en milisegundos
-   * @returns {boolean} true si hay que cambiar de cámara ahora
+   * @returns {boolean} true si hay que actuar ahora
    */
   update(hands, nowMs) {
-    this.hand = fistHand(hands);
-    if (this.hand) {
+    const p = this.detectar(hands, this.opts);
+    if (p) {
+      this.punto = p;
       this.held++;
+      this.missed = 0;
       this.released = 0;
     } else {
-      this.held = 0;
+      if (++this.missed > this.opts.graceFrames) {
+        this.held = 0;
+        this.punto = null;
+      }
       if (++this.released >= this.opts.releaseFrames) this.armed = true;
     }
     if (
-      this.hand &&
+      this.punto &&
       this.armed &&
       this.held >= this.opts.holdFrames &&
       nowMs - this.lastFireAt >= this.opts.cooldownMs
@@ -331,7 +358,14 @@ export class FistDetector {
 
   /** Cuánto falta para disparar, de 0 a 1, para dibujar el anillo de espera. */
   get progress() {
-    if (!this.hand || !this.armed) return 0;
+    if (!this.punto || !this.armed) return 0;
     return Math.min(1, this.held / this.opts.holdFrames);
+  }
+}
+
+/** Palmas juntas sostenidas: el gesto que cambia de cámara. */
+export class PalmsDetector extends GestureDetector {
+  constructor(opts = {}) {
+    super(prayerCenter, opts);
   }
 }

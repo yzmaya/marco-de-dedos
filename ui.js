@@ -28,9 +28,10 @@ function esCampoDeTexto(el) {
  * @param {object} opts
  * @param {(id:string)=>void} opts.onEfecto  efecto elegido
  * @param {()=>void} opts.onVR                 forzar o quitar la vista de visor
+ * @param {(delta:number)=>void} opts.onVRZoom  afinar la escala del visor
  * @param {string} opts.efectoId             efecto inicial
  */
-export function createUI({ onEfecto, onVR = () => {}, efectoId }) {
+export function createUI({ onEfecto, onVR = () => {}, onVRZoom = () => {}, efectoId }) {
   const el = (id) => document.getElementById(id);
   const toolbar = el("toolbar");
   const hint = el("hint");
@@ -84,6 +85,12 @@ export function createUI({ onEfecto, onVR = () => {}, efectoId }) {
     } else if (ev.key === "[" || ev.key === "ArrowLeft" || ev.key === "ArrowUp") {
       ev.preventDefault();
       ciclar(-1);
+    } else if (ev.key === "+" || ev.key === "=") {
+      ev.preventDefault();
+      onVRZoom(0.05);
+    } else if (ev.key === "-" || ev.key === "_") {
+      ev.preventDefault();
+      onVRZoom(-0.05);
     }
   });
 
