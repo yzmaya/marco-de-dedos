@@ -27,11 +27,12 @@ function esCampoDeTexto(el) {
  *
  * @param {object} opts
  * @param {(id:string)=>void} opts.onEfecto  efecto elegido
+ * @param {()=>void} opts.onCamara             cambiar entre cámara frontal y trasera
  * @param {()=>void} opts.onVR                 forzar o quitar la vista de visor
  * @param {(delta:number)=>void} opts.onVRZoom  afinar la escala del visor
  * @param {string} opts.efectoId             efecto inicial
  */
-export function createUI({ onEfecto, onVR = () => {}, onVRZoom = () => {}, efectoId }) {
+export function createUI({ onEfecto, onCamara = () => {}, onVR = () => {}, onVRZoom = () => {}, efectoId }) {
   const el = (id) => document.getElementById(id);
   const toolbar = el("toolbar");
   const hint = el("hint");
@@ -76,6 +77,9 @@ export function createUI({ onEfecto, onVR = () => {}, onVRZoom = () => {}, efect
     } else if (key === "o") {
       ev.preventDefault();
       toggleClean();
+    } else if (key === "c") {
+      ev.preventDefault();
+      onCamara();
     } else if (key === "v") {
       ev.preventDefault();
       onVR();
@@ -92,6 +96,13 @@ export function createUI({ onEfecto, onVR = () => {}, onVRZoom = () => {}, efect
       ev.preventDefault();
       onVRZoom(-0.05);
     }
+  });
+
+  // El botón de cámara es lo único que no se esconde nunca: dentro del
+  // visor y con la interfaz oculta sigue siendo la forma de volver.
+  el("camara-btn").addEventListener("click", (ev) => {
+    ev.currentTarget.blur();
+    onCamara();
   });
 
   // Interfaz oculta: fuera todo menos el video y el marco. El aviso se

@@ -156,6 +156,33 @@
       box-shadow: 0 0 8px currentColor;
     }
 
+    /* ---- botón de cámara ----
+       Transparente, en la esquina, y es lo único que no se esconde nunca:
+       dentro del visor y con la interfaz oculta sigue siendo la forma de
+       cambiar de cámara. */
+    #camara-btn {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      z-index: 9;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      background: rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(6px);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 24px;
+      line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #camara-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    #camara-btn:active { transform: scale(0.92); }
+    #camara-btn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
     /* ---- interfaz oculta: solo el video y el marco ----
        También en la vista de visor VR: dentro del cardboard no hay quien
        toque un botón, y cualquier cosa fuera de las dos mitades estorba. */
@@ -236,8 +263,16 @@
     <canvas id="canvas"></canvas>
   </div>
 
+  <button id="camara-btn" type="button" title="Cambiar de cámara (C)" aria-label="Cambiar de cámara">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 8h3l2-2.5h6L17 8h3v11H4z" />
+      <circle cx="12" cy="13" r="3.2" />
+      <path d="M18.5 3.5v3h-3" /><path d="M18.5 6.5a4 4 0 0 0-6.6-1.9" />
+    </svg>
+  </button>
+
   <div id="hint">
-    <div id="hint-text">Haz el marco de director: pulgar e índice abiertos en L con las dos manos. Palmas juntas 🙏: cambia de cámara.</div>
+    <div id="hint-text">Haz el marco de director: pulgar e índice abiertos en L con las dos manos. El botón de arriba cambia de cámara.</div>
   </div>
 
   <!-- Riel izquierdo: los efectos -->
@@ -253,18 +288,18 @@
   <script type="importmap">
   {
     "imports": {
-      "./main.js": "./main.js?v=9",
-      "./efectos.js": "./efectos.js?v=9",
-      "./fx.js": "./fx.js?v=9",
-      "./cubos.js": "./cubos.js?v=9",
-      "./tracking.js": "./tracking.js?v=9",
-      "./composite.js": "./composite.js?v=9",
-      "./hands.js": "./hands.js?v=9",
-      "./demo.js": "./demo.js?v=9",
-      "./ui.js": "./ui.js?v=9"
+      "./main.js": "./main.js?v=10",
+      "./efectos.js": "./efectos.js?v=10",
+      "./fx.js": "./fx.js?v=10",
+      "./cubos.js": "./cubos.js?v=10",
+      "./tracking.js": "./tracking.js?v=10",
+      "./composite.js": "./composite.js?v=10",
+      "./hands.js": "./hands.js?v=10",
+      "./demo.js": "./demo.js?v=10",
+      "./ui.js": "./ui.js?v=10"
     }
   }
   </script>
-  <script type="module" src="./main.js?v=9"></script>
+  <script type="module" src="./main.js?v=10"></script>
 </body>
 </html>

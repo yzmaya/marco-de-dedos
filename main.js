@@ -7,8 +7,8 @@
 // Todo corre en el navegador, en un único requestAnimationFrame. No hay
 // servidor, ni clave, ni modelo remoto: la cámara nunca sale de esta pestaña.
 //
-// Gestos: el marco de director abre la ventana con el efecto; las palmas juntas
-// sostenidas cambian entre la cámara frontal y la trasera.
+// El marco de director abre la ventana con el efecto. La cámara se cambia
+// con el botón de la esquina (o la tecla C): frontal ↔ trasera.
 //
 // Con la trasera la pantalla se parte en dos mitades iguales, una por ojo,
 // para meter el teléfono en un visor tipo cardboard. Todo se compone en una
@@ -17,11 +17,9 @@
 import {
   computeQuad,
   FrameTracker,
-  PalmsDetector,
   TRACKING_DEFAULTS,
   handInfo,
   centroid,
-  toPixel,
 } from "./tracking.js";
 import {
   drawMirrored,
@@ -51,7 +49,6 @@ let efectoId = EFECTOS.some((e) => e.id === settings.efectoId)
   : EFECTO_INICIAL;
 
 const tracker = new FrameTracker();
-const palmas = new PalmsDetector();
 let landmarker = null;
 let lastVideoTime = -1;
 let lastHands = null;
@@ -91,6 +88,7 @@ const ui = createUI({
     // gran angular fuera de él.
     if (facing === "environment") void cambiarLente(!enVR());
   },
+  onCamara: () => void cambiarCamara(),
   onVRZoom: (delta) => {
     vrZoom = Math.round(Math.min(1.6, Math.max(0.7, vrZoom + delta)) * 100) / 100;
     localStorage.setItem(VR_ZOOM_STORAGE, String(vrZoom));
@@ -234,7 +232,6 @@ async function cambiarCamara() {
     }
   } finally {
     tracker.reset();
-    palmas.reset();
     lastVideoTime = -1;
     lastHands = null;
     cambiandoCamara = false;
@@ -311,7 +308,6 @@ async function cambiarLente(granAngular) {
     ui.toast(`No se pudo cambiar de lente: ${err?.message || err}`, 3000);
   } finally {
     tracker.reset();
-    palmas.reset();
     lastVideoTime = -1;
     lastHands = null;
     cambiandoCamara = false;
@@ -403,13 +399,6 @@ function loop() {
   });
   tracker.update(target, w);
 
-  // Las palmas juntas solo cuentan cuando NO hay marco: con el marco hecho
-  // no hay forma de tener las manos pegadas, y así un cruce de manos raro no
-  // cambia de cámara.
-  if (!DEMO && palmas.update(tracker.active ? null : lastHands, now)) {
-    void cambiarCamara();
-  }
-
   if (tracker.visible) {
     drawWindow(tracker.corners, w, h);
     drawOutline(ctx, tracker.corners, {
@@ -419,15 +408,11 @@ function loop() {
     });
   }
 
-  if (palmas.progress > 0 && palmas.punto) {
-    drawGesto(ctx, toPixel(palmas.punto, w, h, espejo), palmas.progress, w);
-  }
-
   // Sin marco: enseñar qué ve el detector y decir qué falta. Sin esto, cuando
   // el gesto no entra no hay forma de saber si es que no ve las manos o si es
   // que la L está poco abierta.
   const sinMarco = tracker.presence <= 0.5;
-  if (sinMarco && !palmas.punto) {
+  if (sinMarco) {
     const manos = lastHands ?? [];
     const infos = manos.map((lm) => handInfo(lm, { width: w, height: h, mirror: espejo }));
     drawManos(ctx, infos, w);
@@ -520,32 +505,6 @@ function drawWindow(quad, w, h) {
     efecto.overlay?.(ctx, info);
   });
   efecto.overlayLibre?.(ctx, info);
-}
-
-/** Anillo que se llena mientras se sostienen las palmas juntas: avisa de lo que va a pasar. */
-function drawGesto(ctx, p, progress, w) {
-  const r = Math.max(22, w * 0.03);
-  const acento = efectoActual().acento;
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(3, w / 300);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.strokeStyle = withAlpha(acento, 0.95);
-  ctx.shadowColor = withAlpha(acento, 0.8);
-  ctx.shadowBlur = 12;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.font = `${Math.round(r * 0.9)}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple Color Emoji", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(255,255,255,0.95)";
-  ctx.fillText("🙏", p.x, p.y);
-  ctx.restore();
 }
 
 init().catch((err) => {

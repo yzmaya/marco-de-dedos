@@ -49,6 +49,17 @@ ok("la pantalla de carga se fue", await p.evaluate(() => document.getElementById
 ok("el canvas tiene el tamaño del video", await p.evaluate(() => canvas.width === 1280 && canvas.height === 720));
 ok("no queda rastro de marca ni de claves", await p.evaluate(() => !/pollito|miss yera|fal\.ai|clave/i.test(document.body.innerText + document.title)));
 ok("no hay riel derecho ni barritas", await p.evaluate(() => !document.getElementById("riel-der") && !document.querySelector('input[type="range"]')));
+ok("hay botón de cámara a la vista", await p.evaluate(() => {
+  const b = document.getElementById("camara-btn");
+  const r = b?.getBoundingClientRect();
+  return !!b && r.width > 30 && getComputedStyle(b).opacity === "1";
+}));
+await p.keyboard.press("v");
+await p.waitForTimeout(300);
+ok("el botón sigue a la vista dentro de la vista de visor", await p.evaluate(() =>
+  document.body.classList.contains("vr") && getComputedStyle(document.getElementById("camara-btn")).opacity === "1"));
+await p.keyboard.press("v");
+await p.waitForTimeout(300);
 ok("pinta bajo el notch y se puede instalar como app", await p.evaluate(async () => {
   const vp = document.querySelector('meta[name="viewport"]')?.content || "";
   const manifest = document.querySelector('link[rel="manifest"]')?.href;
