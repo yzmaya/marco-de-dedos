@@ -145,14 +145,20 @@
       box-shadow: 0 0 8px currentColor;
     }
 
-    /* ---- interfaz oculta: solo el video y el marco ---- */
+    /* ---- interfaz oculta: solo el video y el marco ----
+       También en la vista de visor VR: dentro del cardboard no hay quien
+       toque un botón, y cualquier cosa fuera de las dos mitades estorba. */
     body.limpio .riel,
-    body.limpio #hint {
+    body.limpio #hint,
+    body.vr .riel,
+    body.vr #hint {
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.25s;
     }
     body.limpio { cursor: none; }
+    body.vr #stage { padding: 0; background: #000; }
+    body.vr canvas { border-radius: 0; }
 
     #toast {
       position: fixed;
@@ -236,18 +242,18 @@
   <script type="importmap">
   {
     "imports": {
-      "./main.js": "./main.js?v=6",
-      "./efectos.js": "./efectos.js?v=6",
-      "./fx.js": "./fx.js?v=6",
-      "./cubos.js": "./cubos.js?v=6",
-      "./tracking.js": "./tracking.js?v=6",
-      "./composite.js": "./composite.js?v=6",
-      "./hands.js": "./hands.js?v=6",
-      "./demo.js": "./demo.js?v=6",
-      "./ui.js": "./ui.js?v=6"
+      "./main.js": "./main.js?v=7",
+      "./efectos.js": "./efectos.js?v=7",
+      "./fx.js": "./fx.js?v=7",
+      "./cubos.js": "./cubos.js?v=7",
+      "./tracking.js": "./tracking.js?v=7",
+      "./composite.js": "./composite.js?v=7",
+      "./hands.js": "./hands.js?v=7",
+      "./demo.js": "./demo.js?v=7",
+      "./ui.js": "./ui.js?v=7"
     }
   }
   </script>
-  <script type="module" src="./main.js?v=6"></script>
+  <script type="module" src="./main.js?v=7"></script>
 </body>
 </html>

@@ -27,9 +27,10 @@ function esCampoDeTexto(el) {
  *
  * @param {object} opts
  * @param {(id:string)=>void} opts.onEfecto  efecto elegido
+ * @param {()=>void} opts.onVR                 forzar o quitar la vista de visor
  * @param {string} opts.efectoId             efecto inicial
  */
-export function createUI({ onEfecto, efectoId }) {
+export function createUI({ onEfecto, onVR = () => {}, efectoId }) {
   const el = (id) => document.getElementById(id);
   const toolbar = el("toolbar");
   const hint = el("hint");
@@ -74,6 +75,9 @@ export function createUI({ onEfecto, efectoId }) {
     } else if (key === "o") {
       ev.preventDefault();
       toggleClean();
+    } else if (key === "v") {
+      ev.preventDefault();
+      onVR();
     } else if (ev.key === "]" || ev.key === "ArrowRight" || ev.key === "ArrowDown") {
       ev.preventDefault();
       ciclar(1);

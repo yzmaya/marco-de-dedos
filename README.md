@@ -87,6 +87,18 @@ en `efectos.js`, en el campo `ajustes` de cada uno.
 | 1–9, 0, Q, W, E, R, T | Elegir efecto |
 | [ ] o flechas | Efecto anterior / siguiente |
 | O | Ocultar o mostrar la interfaz (deja solo el video y el marco) |
+| V | Forzar o quitar la vista para visor VR (para probarla en la computadora) |
+
+### Con un visor VR (cardboard)
+
+Al pasar a la cámara trasera la pantalla se parte en dos mitades iguales, una
+por ojo, y la interfaz desaparece. Se mete el teléfono apaisado en el visor y
+listo. Elige el efecto antes de cambiar de cámara; dentro del visor el puño
+sigue funcionando para volver a la frontal (y a la vista normal).
+
+Es la misma imagen para los dos ojos: una cámara sola no da profundidad, y el
+retraso de la cámara al ojo es de unos 100 a 200 ms. Sirve para probar la
+sensación; para hacerlo bien hace falta un visor con cámaras propias.
 
 ### En el móvil
 

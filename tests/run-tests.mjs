@@ -27,7 +27,7 @@ import {
   FistDetector,
   FIST_DEFAULTS,
 } from "../tracking.js";
-import { withAlpha, FpsMeter, quadPoint, quadScale } from "../composite.js";
+import { withAlpha, FpsMeter, quadPoint, quadScale, encuadreVR } from "../composite.js";
 import {
   VERTICES,
   CARAS,
@@ -534,6 +534,29 @@ test("ajustesDe pisa los de fábrica solo con lo guardado", () => {
   assert.equal(mezcla.tono, 0.33);
   assert.equal(mezcla.intensidad, e.ajustes.intensidad);
   assert.deepEqual(ajustesDe(e, { glitch: { tono: 1 } }), e.ajustes, "lo de otro efecto no cuenta");
+});
+
+// --------------------------------------------------------------------- VR
+group("Vista para visor VR");
+
+test("cada ojo ocupa exactamente su mitad y las dos son iguales", () => {
+  const [izq, der] = encuadreVR(1280, 720);
+  assert.deepEqual(izq.clip, { x: 0, y: 0, w: 640, h: 720 });
+  assert.deepEqual(der.clip, { x: 640, y: 0, w: 640, h: 720 });
+  assert.equal(izq.w, der.w);
+  assert.equal(izq.h, der.h);
+  assert.equal(der.x - izq.x, 640, "la escena del ojo derecho va desplazada media pantalla");
+});
+
+test("la escena conserva su proporción y queda centrada en cada ojo", () => {
+  const [izq] = encuadreVR(1280, 720, 1);
+  assert.ok(Math.abs(izq.w / izq.h - 1280 / 720) < 1e-9, "16:9 intacto");
+  assert.equal(izq.w, 640, "sin zoom, encaja al ancho del ojo");
+  assert.equal(izq.x, 0);
+  assert.equal(izq.y + izq.h / 2, 360, "centrada en vertical");
+  const [conZoom] = encuadreVR(1280, 720, 1.2);
+  assert.ok(conZoom.w > 640 && conZoom.x < 0, "con zoom sobresale por los lados, simétrico");
+  assert.ok(Math.abs(conZoom.x + conZoom.w / 2 - 320) < 1e-9, "sigue centrada");
 });
 
 // -------------------------------------------------------------- utilidades

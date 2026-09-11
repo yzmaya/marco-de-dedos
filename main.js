@@ -9,6 +9,10 @@
 //
 // Gestos: el marco de director abre la ventana con el efecto; un puño cerrado
 // y sostenido cambia entre la cámara frontal y la trasera.
+//
+// Con la trasera la pantalla se parte en dos mitades iguales, una por ojo,
+// para meter el teléfono en un visor tipo cardboard. Todo se compone en una
+// escena aparte y al final se presenta una vez (normal) o dos (VR).
 
 import {
   computeQuad,
@@ -24,6 +28,7 @@ import {
   clipToQuad,
   drawOutline,
   resizeCanvasToVideo,
+  drawVR,
   withAlpha,
 } from "./composite.js";
 import { EFECTOS, EFECTO_INICIAL, buscarEfecto, ajustesDe } from "./efectos.js";
@@ -33,8 +38,12 @@ import { DEMO, makeDemoStream, makeFakeHands } from "./demo.js";
 import { createUI, loadSettings } from "./ui.js";
 
 const video = document.getElementById("video");
+/** Lo que se ve. */
 const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+const salida = canvas.getContext("2d");
+/** Donde se compone todo (cámara, efecto, marco); se presenta al final. */
+const escena = document.createElement("canvas");
+const ctx = escena.getContext("2d");
 
 const settings = loadSettings();
 let efectoId = EFECTOS.some((e) => e.id === settings.efectoId)
@@ -53,6 +62,11 @@ let motor = null;
 let facing = "user";
 let espejo = true;
 let cambiandoCamara = false;
+/** VR forzado con la tecla V (null = automático: con la trasera). */
+let vrForzado = null;
+function enVR() {
+  return vrForzado ?? facing === "environment";
+}
 
 function efectoActual() {
   return buscarEfecto(efectoId);
@@ -62,6 +76,10 @@ const ui = createUI({
   efectoId,
   onEfecto: (id) => {
     efectoId = id;
+  },
+  onVR: () => {
+    vrForzado = !enVR();
+    ui.toast(enVR() ? "Vista para visor VR · V para volver" : "Vista normal", 2000);
   },
 });
 
@@ -83,10 +101,10 @@ async function init() {
   }
 
   await ponerStream(stream);
-  resizeCanvasToVideo(canvas, video);
+  ajustarTamano();
 
   try {
-    motor = new MotorFX(canvas.width, canvas.height);
+    motor = new MotorFX(escena.width, escena.height);
   } catch (err) {
     console.warn("Sin WebGL2, efectos en modo básico:", err);
     ui.toast("Este navegador no tiene WebGL2: los efectos van en modo básico", 4000);
@@ -185,7 +203,13 @@ async function cambiarCamara() {
     const real = nuevo.getVideoTracks()[0]?.getSettings().facingMode;
     facing = real || destino;
     espejo = facing !== "environment";
-    ui.toast(espejo ? "Cámara frontal" : granAngular ? "Cámara trasera · gran angular" : "Cámara trasera", 1600);
+    vrForzado = null;
+    ui.toast(
+      espejo
+        ? "Cámara frontal"
+        : `Cámara trasera${granAngular ? " · gran angular" : ""} · vista para visor VR`,
+      2000
+    );
   } catch (err) {
     console.error(err);
     try {
@@ -248,6 +272,22 @@ async function preferirGranAngular(stream) {
   return { stream, granAngular: false };
 }
 
+/** La escena y la salida siguen al video. Devuelve true si cambió el tamaño. */
+function ajustarTamano() {
+  if (!resizeCanvasToVideo(escena, video)) return false;
+  canvas.width = escena.width;
+  canvas.height = escena.height;
+  return true;
+}
+
+/** Lleva la escena a la pantalla: tal cual, o partida en dos para el visor. */
+function presentar() {
+  const vr = enVR();
+  document.body.classList.toggle("vr", vr);
+  if (vr) drawVR(salida, escena, canvas.width, canvas.height);
+  else salida.drawImage(escena, 0, 0);
+}
+
 function loop() {
   // Mientras la cámara cambia no hay cuadros: se deja el último pintado en
   // vez de limpiar el canvas (que es lo que lo pone en negro).
@@ -255,9 +295,9 @@ function loop() {
     requestAnimationFrame(loop);
     return;
   }
-  if (resizeCanvasToVideo(canvas, video)) motor?.resize(canvas.width, canvas.height);
-  const w = canvas.width;
-  const h = canvas.height;
+  if (ajustarTamano()) motor?.resize(escena.width, escena.height);
+  const w = escena.width;
+  const h = escena.height;
   const now = performance.now();
 
   // Capa base: la cámara real, en espejo si es la frontal.
@@ -310,6 +350,7 @@ function loop() {
     ui.setHint(pistaPara(infos));
   }
   ui.showHint(sinMarco);
+  presentar();
   requestAnimationFrame(loop);
 }
 

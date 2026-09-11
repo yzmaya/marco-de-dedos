@@ -104,6 +104,23 @@ ok("los efectos van en una tira abajo", tira && tira.width >= 389 && tira.y > 70
 await movil.screenshot({ path: join(CAPTURAS, "movil.png") });
 await movil.close();
 
+console.log("\nVisor VR");
+await p.keyboard.press("v");
+await p.waitForTimeout(300);
+ok("V parte la pantalla en dos y esconde la interfaz", await p.evaluate(() => document.body.classList.contains("vr")));
+const mitades = await p.evaluate(() => {
+  const c = document.getElementById("canvas");
+  const g = c.getContext("2d");
+  // Mismo píxel en cada mitad (centro de cada ojo): deben coincidir.
+  const a = g.getImageData(c.width / 4, c.height / 2, 1, 1).data;
+  const b = g.getImageData((3 * c.width) / 4, c.height / 2, 1, 1).data;
+  return [...a].slice(0, 3).join() === [...b].slice(0, 3).join();
+});
+ok("las dos mitades muestran lo mismo", mitades);
+await p.keyboard.press("v");
+await p.waitForTimeout(200);
+ok("V otra vez vuelve a la vista normal", await p.evaluate(() => !document.body.classList.contains("vr")));
+
 console.log("\nInterfaz oculta");
 await p.keyboard.press("o");
 await p.waitForTimeout(80);

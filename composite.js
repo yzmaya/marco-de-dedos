@@ -130,6 +130,48 @@ export function quadScale(quad) {
   return Math.min(ancho, alto);
 }
 
+/**
+ * Encuadre para un visor tipo cardboard: la misma escena dos veces, una por
+ * ojo, cada una en su mitad de la pantalla. La escena se encaja al ancho de
+ * la mitad y se acerca un poco (zoom): la lente solo deja ver el centro de
+ * cada mitad, así que con un pelín de zoom se aprovecha mejor y lo que se
+ * pierde por los lados no se echa de menos.
+ *
+ * @returns {Array<{clip:{x,y,w,h}, x,y,w,h}>} recorte de cada ojo y dónde va
+ *   la escena dentro (puede sobresalir del recorte: ese es el zoom).
+ */
+export function encuadreVR(w, h, zoom = 1.2) {
+  const ojoW = w / 2;
+  const dw = ojoW * zoom;
+  const dh = ((h * ojoW) / w) * zoom;
+  const dx = (ojoW - dw) / 2;
+  const dy = (h - dh) / 2;
+  return [0, 1].map((i) => ({
+    clip: { x: i * ojoW, y: 0, w: ojoW, h },
+    x: i * ojoW + dx,
+    y: dy,
+    w: dw,
+    h: dh,
+  }));
+}
+
+/** Pinta la escena en estéreo lado a lado sobre `salida`. */
+export function drawVR(salida, escena, w, h, zoom = 1.2) {
+  salida.fillStyle = "#000";
+  salida.fillRect(0, 0, w, h);
+  for (const ojo of encuadreVR(w, h, zoom)) {
+    salida.save();
+    salida.beginPath();
+    salida.rect(ojo.clip.x, ojo.clip.y, ojo.clip.w, ojo.clip.h);
+    salida.clip();
+    salida.drawImage(escena, ojo.x, ojo.y, ojo.w, ojo.h);
+    salida.restore();
+  }
+  // Separador fino entre los dos ojos, para alinear el visor.
+  salida.fillStyle = "rgba(255,255,255,0.18)";
+  salida.fillRect(w / 2 - 1, 0, 2, h);
+}
+
 /** Ajusta el canvas al tamaño real del video. Devuelve true si cambió. */
 export function resizeCanvasToVideo(canvas, video) {
   const w = video.videoWidth || 1280;
