@@ -49,6 +49,14 @@ ok("la pantalla de carga se fue", await p.evaluate(() => document.getElementById
 ok("el canvas tiene el tamaño del video", await p.evaluate(() => canvas.width === 1280 && canvas.height === 720));
 ok("no queda rastro de marca ni de claves", await p.evaluate(() => !/pollito|miss yera|fal\.ai|clave/i.test(document.body.innerText + document.title)));
 ok("no hay riel derecho ni barritas", await p.evaluate(() => !document.getElementById("riel-der") && !document.querySelector('input[type="range"]')));
+ok("pinta bajo el notch y se puede instalar como app", await p.evaluate(async () => {
+  const vp = document.querySelector('meta[name="viewport"]')?.content || "";
+  const manifest = document.querySelector('link[rel="manifest"]')?.href;
+  const r = manifest && (await fetch(manifest));
+  const m = r && r.ok && (await r.json());
+  const icono = m && (await fetch(new URL(m.icons[0].src, manifest)));
+  return vp.includes("viewport-fit=cover") && !!m && m.display === "fullscreen" && icono.ok;
+}));
 
 console.log("\nShaders");
 const shaders = await p.evaluate(async () => {

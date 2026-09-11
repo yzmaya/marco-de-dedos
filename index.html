@@ -2,7 +2,18 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport-fit=cover: pintar también debajo del notch. Sin esto, Safari
+       en horizontal deja franjas negras a los lados. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <!-- Como app en la pantalla de inicio: sin barra de direcciones ni
+       pestañas. Es la única forma de pantalla completa en iPhone. -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Marco" />
+  <link rel="apple-touch-icon" href="./iconos/icono-180.png" />
   <title>Marco de dedos · Efectos en vivo</title>
   <meta name="description" content="Haz el marco de director con los dedos y el área dentro de tus manos se transforma con efectos visuales en tiempo real, todo en tu navegador." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
@@ -200,7 +211,7 @@
         flex-direction: row; flex-wrap: nowrap;
         justify-content: flex-start; align-items: center;
         gap: 6px;
-        padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+        padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
         overflow-x: auto; overflow-y: hidden;
         scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
@@ -242,18 +253,18 @@
   <script type="importmap">
   {
     "imports": {
-      "./main.js": "./main.js?v=7",
-      "./efectos.js": "./efectos.js?v=7",
-      "./fx.js": "./fx.js?v=7",
-      "./cubos.js": "./cubos.js?v=7",
-      "./tracking.js": "./tracking.js?v=7",
-      "./composite.js": "./composite.js?v=7",
-      "./hands.js": "./hands.js?v=7",
-      "./demo.js": "./demo.js?v=7",
-      "./ui.js": "./ui.js?v=7"
+      "./main.js": "./main.js?v=8",
+      "./efectos.js": "./efectos.js?v=8",
+      "./fx.js": "./fx.js?v=8",
+      "./cubos.js": "./cubos.js?v=8",
+      "./tracking.js": "./tracking.js?v=8",
+      "./composite.js": "./composite.js?v=8",
+      "./hands.js": "./hands.js?v=8",
+      "./demo.js": "./demo.js?v=8",
+      "./ui.js": "./ui.js?v=8"
     }
   }
   </script>
-  <script type="module" src="./main.js?v=7"></script>
+  <script type="module" src="./main.js?v=8"></script>
 </body>
 </html>

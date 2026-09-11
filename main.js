@@ -283,10 +283,47 @@ function ajustarTamano() {
 /** Lleva la escena a la pantalla: tal cual, o partida en dos para el visor. */
 function presentar() {
   const vr = enVR();
-  document.body.classList.toggle("vr", vr);
+  if (document.body.classList.toggle("vr", vr) !== vrAnterior) {
+    vrAnterior = vr;
+    if (vr) avisarPantallaCompleta();
+  }
   if (vr) drawVR(salida, escena, canvas.width, canvas.height);
   else salida.drawImage(escena, 0, 0);
 }
+let vrAnterior = false;
+
+// ---- pantalla completa ----
+//
+// En Android y en la computadora un toque pide pantalla completa (y de paso
+// bloquea la orientación en horizontal si se deja). En iPhone Safari no
+// existe pantalla completa para páginas: la única forma es abrir la web
+// desde la pantalla de inicio, y eso solo se puede explicar, no forzar.
+
+const esIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const esApp = window.matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches ||
+  navigator.standalone === true;
+const hayPantallaCompleta = !!(document.documentElement.requestFullscreen && document.fullscreenEnabled);
+
+function avisarPantallaCompleta() {
+  if (esApp || document.fullscreenElement) return;
+  if (hayPantallaCompleta) ui.toast("Toca la pantalla para ponerla completa", 3000);
+  else if (esIOS) ui.toast("Pantalla completa en iPhone: Compartir → Añadir a pantalla de inicio, y abre desde ahí", 6000);
+}
+
+async function pedirPantallaCompleta() {
+  if (!hayPantallaCompleta || document.fullscreenElement) return;
+  try {
+    await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    await screen.orientation?.lock?.("landscape").catch(() => {});
+  } catch (err) {
+    console.warn("Sin pantalla completa:", err);
+  }
+}
+
+canvas.addEventListener("click", () => {
+  if (enVR()) void pedirPantallaCompleta();
+});
 
 function loop() {
   // Mientras la cámara cambia no hay cuadros: se deja el último pintado en

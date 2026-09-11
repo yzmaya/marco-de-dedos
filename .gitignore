@@ -11,6 +11,8 @@ grabaciones/
 *.jpeg
 # Salvo la media de ejemplo que sí se publica a propósito.
 !examples/**
+# Y los iconos de la app, que son parte de la página.
+!iconos/*.png
 
 # Sistema y editores
 .DS_Store

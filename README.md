@@ -100,6 +100,13 @@ Es la misma imagen para los dos ojos: una cámara sola no da profundidad, y el
 retraso de la cámara al ojo es de unos 100 a 200 ms. Sirve para probar la
 sensación; para hacerlo bien hace falta un visor con cámaras propias.
 
+**Pantalla completa.** En Android y en la computadora, un toque en la pantalla
+con la vista de visor puesta pide pantalla completa. En iPhone Safari no
+existe pantalla completa para páginas web: hay que **añadir la página a la
+pantalla de inicio** (botón Compartir → «Añadir a pantalla de inicio») y
+abrirla desde ahí; entonces se abre como app, sin barra de direcciones ni
+pestañas. La página lleva el manifest y el icono para eso.
+
 ### En el móvil
 
 El video llena la pantalla entera, sin franjas negras arriba ni abajo: se
@@ -110,6 +117,7 @@ se desliza con el dedo. El puño es la forma de cambiar de cámara.
 
 ```
 index.html      página única, interfaz mínima
+manifest.webmanifest, iconos/   para abrirla como app desde la pantalla de inicio
 main.js         loop de render y orquestación de las tres capas
 tracking.js     geometría del marco y pipeline de robustez (lógica pura)
 efectos.js      lista de efectos: shaders GLSL, ajustes y dibujos 2D
